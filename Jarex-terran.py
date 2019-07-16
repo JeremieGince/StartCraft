@@ -5,8 +5,10 @@ from sc2 import Race, Difficulty
 from sc2.ids.ability_id import AbilityId
 from sc2.constants import *
 from sc2.ids.unit_typeid import UnitTypeId
+from sc2.ids.upgrade_id import UpgradeId
 from sc2.player import Bot, Computer
 from sc2.helpers import ControlGroup
+from sc2.units import Units
 
 COMMANDCENTER = UnitTypeId.COMMANDCENTER
 MARINE = UnitTypeId.MARINE
@@ -21,12 +23,14 @@ VIKING = UnitTypeId.VIKINGFIGHTER
 
 
 class JarexTerran(sc2.BotAI):
-    MAX_WORKERS_COUNT = 65
+    RACE = Race.Terran
+
+    MAX_WORKERS_COUNT = 50
     AVG_WORKERS_PER_CMDC = 16
 
     MAX_BARRACKS_COUNT = 7
-    AVG_BARRACK_PER_CMDC = 1
-    AVG_DEFENDER_PER_CMDC = 25
+    AVG_BARRACK_PER_CMDC = 2
+    AVG_DEFENDER_PER_CMDC = 10
 
     MIN_SUPPLY_LEFT = 10
     MAX_SUPPLY = 200
@@ -34,20 +38,56 @@ class JarexTerran(sc2.BotAI):
     attack_group = list()
     defend_group = list()
 
-    MILITARY_UNIT_CLASS = {MARINE: 150,
-                           SIEGETANK: 20,
-                           VIKING: 20,
-                           UnitTypeId.BATTLECRUISER: 10,
-                           UnitTypeId.MARAUDER: 25,
-                           UnitTypeId.GHOST: 25}
+    MILITARY_UNIT_CLASS = {MARINE: {"max": 50, "priority": 1, "maker_class": BARRACKS, "supply": 1},
+                           SIEGETANK: {"max": 10, "priority": 20, "maker_class": FACTORY, "supply": 4},
+                           UnitTypeId.THOR: {"max": 10, "priority": 1, "maker_class": FACTORY, "supply": 6},
+                           VIKING: {"max": 3, "priority": 50, "maker_class": STARPORT, "supply": 2},
+                           UnitTypeId.BATTLECRUISER: {"max": 10, "priority": 1, "maker_class": STARPORT, "supply": 6},
+                           UnitTypeId.MARAUDER: {"max": 15, "priority": 3, "maker_class": BARRACKS, "supply": 2},
+                           UnitTypeId.GHOST: {"max": 15, "priority": 2, "maker_class": BARRACKS, "supply": 2},
+                           UnitTypeId.MEDIVAC: {"max": 2, "priority": 50, "maker_class": STARPORT, "supply": 6}}
+    CIVIL_UNIT_CLASS = {UnitTypeId.SCV: {"max": 50, "priority": 1,
+                                         "maker_class": UnitTypeId.COMMANDCENTER, "supply": 1}}
 
-    BUILDING_CLASS = [COMMANDCENTER, REFINERY, SUPPLYDEPOT, BARRACKS, FACTORY, STARPORT, UnitTypeId.ARMORY]
+    BUILDING_CLASS = {COMMANDCENTER,
+                      REFINERY,
+                      SUPPLYDEPOT,
+                      BARRACKS,
+                      FACTORY,
+                      STARPORT,
+                      UnitTypeId.ARMORY}
+
+    MILITARY_BUILDINGS_CLASS = {UnitTypeId.BARRACKS: {"priority": 1, "max": 5,
+                                                      "avg_per_cmdc": 2, "add_on": [UnitTypeId.BARRACKSTECHLAB],
+                                                      "upgrade": []},
+                                UnitTypeId.FACTORY: {"priority": 10, "max": 5,
+                                                     "avg_per_cmdc": 1, "add_on": [UnitTypeId.FACTORYTECHLAB],
+                                                     "upgrade": []},
+                                UnitTypeId.STARPORT: {"priority": 50, "max": 3,
+                                                      "avg_per_cmdc": 1, "add_on": [UnitTypeId.STARPORTTECHLAB],
+                                                      "upgrade": []},
+                                UnitTypeId.ARMORY: {"priority": 1, "max": 1,
+                                                    "avg_per_cmdc": 1, "add_on": [], "upgrade": []},
+                                UnitTypeId.FUSIONCORE: {"priority": 1, "max": 1,
+                                                        "avg_per_cmdc": 1, "add_on": [], "upgrade": []},
+                                UnitTypeId.MISSILETURRET: {"priority": 100, "max": 25,
+                                                           "avg_per_cmdc": 3, "add_on": [], "upgrade": []},
+
+                                UnitTypeId.ENGINEERINGBAY: {"priority": 1, "max": 1,
+                                                            "avg_per_cmdc": 1, "add_on": [],
+                                                            "upgrade": [UpgradeId.TERRANINFANTRYWEAPONSLEVEL1,
+                                                                        UpgradeId.TERRANINFANTRYARMORSLEVEL1,
+                                                                        UpgradeId.TERRANINFANTRYWEAPONSLEVEL2,
+                                                                        UpgradeId.TERRANINFANTRYARMORSLEVEL2,
+                                                                        UpgradeId.TERRANINFANTRYWEAPONSLEVEL3,
+                                                                        UpgradeId.TERRANINFANTRYARMORSLEVEL3]}
+                                }
 
     army_units = list()
     buildings = list()
 
     RATIO_DEF_ATT_UNITS = 0.5
-    MIN_ARMY_SIZE_FOR_ATTACK = 75
+    MIN_ARMY_SIZE_FOR_ATTACK = 50
 
     iteration = 0
     current_actions = []
@@ -60,7 +100,10 @@ class JarexTerran(sc2.BotAI):
         super(JarexTerran, self).__init__()
 
     def on_start(self):
-        pass
+        self.army_units = Units(list(), self._game_data)
+        self.attack_group = Units(list(), self._game_data)
+        self.defend_group = Units(list(), self._game_data)
+        self.buildings = Units(list(), self._game_data)
 
     async def on_unit_created(self, unit):
         if unit.type_id in self.MILITARY_UNIT_CLASS:
@@ -74,10 +117,17 @@ class JarexTerran(sc2.BotAI):
 
     async def on_unit_destroyed(self, unit_tag):
         self.army_units.remove(unit_tag) if unit_tag in self.army_units else 0
-        self.buildings.remove(unit_tag) if unit_tag in self.buildings else 0
+        # self.buildings.remove(unit_tag) if unit_tag in self.buildings else 0
 
     async def on_step(self, iteration):
         self.iteration = iteration
+
+        self.buildings.clear()
+        b_groups = [self.units(c).ready for c in self.BUILDING_CLASS]
+        for g in b_groups:
+            for b in g:
+                self.buildings.append(b)
+        self.buildings = Units(self.buildings, self._game_data)
 
         self.defend()
         try:
@@ -110,11 +160,10 @@ class JarexTerran(sc2.BotAI):
 
     async def create_supply_depot(self):
         try:
-            if self.supply_used < self.MAX_SUPPLY:
-                cmdcs = self.units(COMMANDCENTER)
+            if self.supply_cap < self.MAX_SUPPLY:
                 if self.supply_left < self.MIN_SUPPLY_LEFT and self.can_afford(SUPPLYDEPOT) \
-                        and cmdcs.amount:
-                    await self.build(SUPPLYDEPOT, near=random.choice(cmdcs).position)
+                        and len(self.buildings) and not self.already_pending(SUPPLYDEPOT):
+                    await self.build(SUPPLYDEPOT, near=random.choice(self.buildings).position.random_on_distance(8), max_distance=50)
         except ValueError:
             pass
 
@@ -131,113 +180,110 @@ class JarexTerran(sc2.BotAI):
 
     async def create_military_buildings(self):
         cmdcs = self.units(COMMANDCENTER)
-        if cmdcs.amount * self.AVG_BARRACK_PER_CMDC > self.units(BARRACKS).amount \
-                < self.MAX_BARRACKS_COUNT \
-                and self.can_afford(BARRACKS) \
-                and not self.already_pending(BARRACKS):
-            await self.build(BARRACKS, near=random.choice(cmdcs).position)
-        else:
-            for barrack in self.units(BARRACKS).ready.noqueue:
-                abilities = await self.get_available_abilities(barrack)
-                if AbilityId.BUILD_TECHLAB_FACTORY in abilities and \
-                        self.can_afford(AbilityId.BUILD_TECHLAB_FACTORY):
-                    await self.do(barrack(AbilityId.BUILD_TECHLAB_FACTORY))
+        if not cmdcs.amount:
+            return None
 
-        if self.units(FACTORY).amount < cmdcs.amount and self.can_afford(FACTORY) \
-                and not self.already_pending(FACTORY):
-            await self.build(FACTORY, near=random.choice(cmdcs).position)
-        else:
-            for factory in self.units(FACTORY).ready.noqueue:
-                abilities = await self.get_available_abilities(factory)
-                if AbilityId.BUILD_TECHLAB_FACTORY in abilities and \
-                        self.can_afford(AbilityId.BUILD_TECHLAB_FACTORY):
-                    await self.do(factory(AbilityId.BUILD_TECHLAB_FACTORY))
-
-        if self.units(STARPORT).amount < cmdcs.amount and self.can_afford(STARPORT) \
-                and not self.already_pending(STARPORT):
-            await self.build(STARPORT, near=random.choice(cmdcs).position)
-
-        if not self.units(UnitTypeId.ARMORY).amount and self.can_afford(UnitTypeId.ARMORY) \
-                and not self.already_pending(UnitTypeId.ARMORY):
-            await self.build(UnitTypeId.ARMORY, near=random.choice(cmdcs))
-
-        if not self.units(UnitTypeId.FUSIONCORE).amount and self.can_afford(UnitTypeId.FUSIONCORE) \
-                and not self.already_pending(UnitTypeId.FUSIONCORE):
-            await self.build(UnitTypeId.FUSIONCORE, near=random.choice(cmdcs))
+        for b_class, info in self.MILITARY_BUILDINGS_CLASS.items():
+            if not self.iteration % info["priority"]:
+                builds = self.units(b_class).ready
+                if cmdcs.amount * info["avg_per_cmdc"] > builds.amount \
+                        < info["max"] and self.can_afford(b_class) and not self.already_pending(b_class):
+                    await self.build(b_class, near=random.choice(cmdcs).position.random_on_distance(8))
+                for b in builds.noqueue:
+                    if b.add_on_tag == 0 and info["add_on"]:
+                        add_on_choice = random.choice(info["add_on"])
+                        if not self.already_pending(add_on_choice):
+                            try:
+                                await b.build(add_on_choice)
+                            except Exception:
+                                info["add_on"].clear()
+                                info["max"] += 1
+                                info["avg_per_cmdc"] += 1
+                for upgrade in info["upgrade"]:
+                    if self.can_afford(upgrade) and builds.noqueue:
+                        self.current_actions.append(random.choice(builds.noqueue).research(upgrade))
 
     async def create_military_units(self):
-        for barrack in self.units(BARRACKS).ready.noqueue:
-            if self.can_afford(UnitTypeId.GHOST) and self.supply_left >= 2 \
-                    and self.units(UnitTypeId.GHOST).amount < self.MILITARY_UNIT_CLASS[UnitTypeId.GHOST]:
-                self.current_actions.append(barrack.train(UnitTypeId.GHOST))
-            elif self.can_afford(MARINE) and self.supply_left >= 1 \
-                    and self.units(MARINE).amount < self.MILITARY_UNIT_CLASS[MARINE]:
-                self.current_actions.append(barrack.train(MARINE))
-            if self.can_afford(UnitTypeId.MARAUDER) and self.supply_left >= 2 \
-                    and self.units(UnitTypeId.MARAUDER).amount < self.MILITARY_UNIT_CLASS[UnitTypeId.MARAUDER]:
-                self.current_actions.append(barrack.train(UnitTypeId.MARAUDER))
-
-        for factory in self.units(FACTORY).ready.noqueue:
-            if self.can_afford(SIEGETANK) and self.supply_left >= 4 \
-                    and self.units(SIEGETANK).amount < self.MILITARY_UNIT_CLASS[SIEGETANK]:
-                self.current_actions.append((factory.train(SIEGETANK)))
-
-        for starport in self.units(STARPORT).ready.noqueue:
-            if self.can_afford(UnitTypeId.BATTLECRUISER) and self.supply_left >= 6 \
-                    and self.units(UnitTypeId.BATTLECRUISER).amount \
-                    < self.MILITARY_UNIT_CLASS[UnitTypeId.BATTLECRUISER]:
-                self.current_actions.append(starport.train(UnitTypeId.BATTLECRUISER))
-            elif self.can_afford(VIKING) and self.supply_left >= 2 \
-                    and self.units(VIKING).amount < self.MILITARY_UNIT_CLASS[VIKING]:
-                self.current_actions.append(starport.train(VIKING))
+        for unit_class, info in self.MILITARY_UNIT_CLASS.items():
+            if not self.iteration % info["priority"]:
+                units = self.units(unit_class)
+                makers = self.units(info["maker_class"]).ready.noqueue
+                if not makers:
+                    continue
+                if units.amount < info["max"] and self.supply_left >= info["supply"]:
+                    for maker in makers:
+                        if self.can_afford(unit_class):
+                            self.current_actions.append(maker.train(unit_class))
 
     async def expand(self):
-        if len(self.army_units) * self.AVG_DEFENDER_PER_CMDC > self.AVG_DEFENDER_PER_CMDC * self.units(
+        if len(self.defend_group) * self.AVG_DEFENDER_PER_CMDC > self.AVG_DEFENDER_PER_CMDC * self.units(
                 COMMANDCENTER).amount \
                 and self.units(BARRACKS).amount >= self.AVG_BARRACK_PER_CMDC * self.units(COMMANDCENTER).amount \
-                and self.can_afford(COMMANDCENTER):
+                and self.can_afford(COMMANDCENTER) and not self.already_pending(COMMANDCENTER):
             await self.expand_now()
             self.expend_count += 1
 
     def defend(self):
-        buildings = self.units(COMMANDCENTER) | self.units(BARRACKS) | self.units(FACTORY) | self.units(STARPORT)
         if len(self.known_enemy_units):
-            self.current_actions.extend(
-                [unit.attack(random.choice(self.known_enemy_units)) for unit in self.defend_group])
-        elif len(buildings):
             for unit in self.defend_group:
+                cmdcs = self.units(COMMANDCENTER)
+                furthest_building = self.buildings.furthest_to(cmdcs.first if cmdcs else unit)
+                dist = unit.distance_to(furthest_building)
+                closest_enemies = self.known_enemy_units.closer_than(dist, unit)
+                if closest_enemies:
+                    self.current_actions.append(unit.attack(closest_enemies.closest_to(unit)))
+                else:
+                    self.current_actions.append(unit.move(furthest_building))
+
+        elif len(self.buildings):
+            for unit in self.defend_group.idle:
                 # random.shuffle(list(buildings))
                 # self.current_actions.extend([unit.move(b.position) for b in buildings])
-                self.current_actions.append(unit.move(random.choice(buildings).position))
+                self.current_actions.append(unit.move(random.choice(self.buildings).position))
 
     def defend_until_die(self):
         if len(self.units(COMMANDCENTER)) == 0 and self.known_enemy_units:
-            for unit in self.army_units:
-                self.current_actions.append(unit.attack(random.choice(self.known_enemy_units)))
+            for unit in self.army_units.idle:
+                self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit)))
             for unit in self.workers:
-                self.current_actions.append(unit.attack(random.choice(self.known_enemy_units)))
+                self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit)))
 
-    def find_target(self, state):
+    def find_target(self, unit, state):
         if len(self.known_enemy_units) > 0:
-            return random.choice(self.known_enemy_units)
+            return self.known_enemy_units.closest_to(unit)
         elif len(self.known_enemy_structures) > 0:
-            return random.choice(self.known_enemy_structures)
+            return self.known_enemy_structures.closest_to(unit)
         else:
             return random.choice(self.enemy_start_locations)
 
     def attack(self):
         if len(self.attack_group) >= self.MIN_ARMY_SIZE_FOR_ATTACK or self.supply_used == self.MAX_SUPPLY:
-            for unit in self.attack_group:
-                self.current_actions.append(unit.attack(self.find_target(self.state)))
+            for unit in self.attack_group.idle:
+                self.current_actions.append(unit.attack(self.find_target(unit, self.state)))
         elif len(self.known_enemy_units) > 0:
-            for unit in self.attack_group:
-                self.current_actions.append(unit.attack(random.choice(self.known_enemy_units)))
+            for unit in self.attack_group.idle:
+                self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit)))
+        # else:
+        #     if self.attack_group.amount and self.attack_group.random.distance_to(self.attack_group.center) > 50:
+        #         for unit in self.attack_group.idle:
+        #             self.current_actions.append(unit.move(self.attack_group.center))
 
 
 if __name__ == '__main__':
     from examples.terran.proxy_rax import ProxyRaxBot
+    from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
         Bot(Race.Terran, JarexTerran()),
-        Computer(Race.Zerg, Difficulty.Medium)
+        Computer(Race.Terran, Difficulty.Medium)
     ], realtime=False)
+
+    # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
+    #     Bot(Race.Terran, JarexTerran()),
+    #     Bot(Race.Protoss, SentdeBot())
+    # ], realtime=False)
+
+    # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
+    #     Bot(Race.Terran, JarexTerran()),
+    #     Bot(Race.Terran, JarexTerran())
+    # ], realtime=False)
