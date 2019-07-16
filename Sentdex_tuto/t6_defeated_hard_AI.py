@@ -106,7 +106,9 @@ class SentdeBot(sc2.BotAI):
                         await self.do(s.attack(random.choice(self.known_enemy_units)))
 
 
-run_game(maps.get("AbyssalReefLE"), [
-    Bot(Race.Protoss, SentdeBot()),
-    Computer(Race.Terran, Difficulty.Hard)
-    ], realtime=False)
+if __name__ == '__main__':
+
+    run_game(maps.get("AbyssalReefLE"), [
+        Bot(Race.Protoss, SentdeBot()),
+        Computer(Race.Terran, Difficulty.Hard)
+        ], realtime=False)
