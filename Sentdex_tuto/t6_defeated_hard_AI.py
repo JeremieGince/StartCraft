@@ -14,7 +14,10 @@ class SentdeBot(sc2.BotAI):
 
     async def on_step(self, iteration):
         self.iteration = iteration
-        await self.distribute_workers()
+        try:
+            await self.distribute_workers()
+        except ValueError:
+            pass
         await self.build_workers()
         await self.build_pylons()
         await self.build_assimilators()
@@ -41,9 +44,10 @@ class SentdeBot(sc2.BotAI):
         for nexus in self.units(NEXUS).ready:
             vaspenes = self.state.vespene_geyser.closer_than(15.0, nexus)
             for vaspene in vaspenes:
-                if not self.can_afford(ASSIMILATOR):
+                if not self.can_afford(ASSIMILATOR) and self.units(ASSIMILATOR).closer_than(1.0, vaspene).exists \
+                        and self.already_pending(ASSIMILATOR):
                     break
-                worker = self.select_build_worker(vaspene.position)
+                worker = self.select_build_worker(vaspene.position, force=True)
                 if worker is None:
                     break
                 if not self.units(ASSIMILATOR).closer_than(1.0, vaspene).exists:
