@@ -73,12 +73,12 @@ class SentdeBot(sc2.BotAI):
     async def attack(self):
         if self.units(STALKER).amount > 15:
             for s in self.units(STALKER).idle:
-                await self.do(s.attack(self.find_target(self.state)))
+                await self.do(s.take_action(self.find_target(self.state)))
 
         elif self.units(STALKER).amount > 3:
             if len(self.known_enemy_units) > 0:
                 for s in self.units(STALKER).idle:
-                    await self.do(s.attack(random.choice(self.known_enemy_units)))
+                    await self.do(s.take_action(random.choice(self.known_enemy_units)))
 
 
 run_game(maps.get("AbyssalReefLE"), [

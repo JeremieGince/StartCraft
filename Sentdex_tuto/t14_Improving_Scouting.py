@@ -9,23 +9,27 @@ import cv2
 import numpy as np
 import os
 import time
-import keras
+import math
+#import keras
 
 #os.environ["SC2PATH"] = '/starcraftstuff/StarCraftII/'
 HEADLESS = False
 
 class SentdeBot(sc2.BotAI):
     def __init__(self, use_model=False):
-        self.ITERATIONS_PER_MINUTE = 165
         self.MAX_WORKERS = 50
         self.do_something_after = 0
         self.use_model = use_model
 
+        ###############################
+        # DICT {UNIT_ID:LOCATION}
+        # every iteration, make sure that unit id still exists!
+        self.scouts_and_spots = {}
         self.train_data = []
-        #####
         if self.use_model:
             print("USING MODEL!")
-            self.model = keras.models.load_model("BasicCNN-10-epochs-0.0001-LR-STAGE1")  # "BasicCNN-30-epochs-0.0001-LR-4.2"
+            self.model = keras.models.load_model("BasicCNN-30-epochs-0.0001-LR-4.2")
+
 
     def on_end(self, game_result):
         print('--- on_end called ---')
@@ -38,7 +42,10 @@ class SentdeBot(sc2.BotAI):
                 f.write("Random {}\n".format(game_result))
 
     async def on_step(self, iteration):
-        self.iteration = iteration
+
+        self.time = (self.state.game_loop/22.4) / 60
+        print('Time:',self.time)
+        await self.build_scout()
         await self.scout()
         await self.distribute_workers()
         await self.build_workers()
@@ -50,13 +57,13 @@ class SentdeBot(sc2.BotAI):
         await self.intel()
         await self.attack()
 
-    def random_location_variance(self, enemy_start_location):
-        x = enemy_start_location[0]
-        y = enemy_start_location[1]
+    def random_location_variance(self, location):
+        x = location[0]
+        y = location[1]
 
         #  FIXED THIS
-        x += ((random.randrange(-20, 20))/100) * self.game_info.map_size[0]
-        y += ((random.randrange(-20, 20))/100) * self.game_info.map_size[1]
+        x += random.randrange(-5,5)
+        y += random.randrange(-5,5)
 
         if x < 0:
             print("x below")
@@ -75,34 +82,81 @@ class SentdeBot(sc2.BotAI):
 
         return go_to
 
-    async def scout(self):
-        '''
-        ['__call__', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_game_data', '_proto', '_type_data', 'add_on_tag', 'alliance', 'assigned_harvesters', 'attack', 'build', 'build_progress', 'cloak', 'detect_range', 'distance_to', 'energy', 'facing', 'gather', 'has_add_on', 'has_buff', 'health', 'health_max', 'hold_position', 'ideal_harvesters', 'is_blip', 'is_burrowed', 'is_enemy', 'is_flying', 'is_idle', 'is_mine', 'is_mineral_field', 'is_powered', 'is_ready', 'is_selected', 'is_snapshot', 'is_structure', 'is_vespene_geyser', 'is_visible', 'mineral_contents', 'move', 'name', 'noqueue', 'orders', 'owner_id', 'position', 'radar_range', 'radius', 'return_resource', 'shield', 'shield_max', 'stop', 'tag', 'train', 'type_id', 'vespene_contents', 'warp_in']
-        '''
-
-        if len(self.units(OBSERVER)) > 0:
-            scout = self.units(OBSERVER)[0]
-            if scout.is_idle:
-                enemy_location = self.enemy_start_locations[0]
-                move_to = self.random_location_variance(enemy_location)
-                print(move_to)
-                await self.do(scout.move(move_to))
-
-        else:
+    async def build_scout(self):
+        if len(self.units(OBSERVER)) < math.floor(self.time/3):
             for rf in self.units(ROBOTICSFACILITY).ready.noqueue:
+                print(len(self.units(OBSERVER)), self.time/3)
                 if self.can_afford(OBSERVER) and self.supply_left > 0:
                     await self.do(rf.train(OBSERVER))
 
+    async def scout(self):
+
+        # {DISTANCE_TO_ENEMY_START:EXPANSIONLOC}
+        self.expand_dis_dir = {}
+
+        for el in self.expansion_locations:
+            distance_to_enemy_start = el.distance_to(self.enemy_start_locations[0])
+            #print(distance_to_enemy_start)
+            self.expand_dis_dir[distance_to_enemy_start] = el
+
+        self.ordered_exp_distances = sorted(k for k in self.expand_dis_dir)
+
+        existing_ids = [unit.tag for unit in self.units]
+        # removing of scouts that are actually dead now.
+        to_be_removed = []
+        for noted_scout in self.scouts_and_spots:
+            if noted_scout not in existing_ids:
+                to_be_removed.append(noted_scout)
+
+        for scout in to_be_removed:
+            del self.scouts_and_spots[scout]
+        # end removing of scouts that are dead now.
+
+        if len(self.units(ROBOTICSFACILITY).ready) == 0:
+            unit_type = PROBE
+            unit_limit = 1
+        else:
+            unit_type = OBSERVER
+            unit_limit = 15
+
+        assign_scout = True
+
+        if unit_type == PROBE:
+            for unit in self.units(PROBE):
+                if unit.tag in self.scouts_and_spots:
+                    assign_scout = False
+
+        if assign_scout:
+            if len(self.units(unit_type).idle) > 0:
+                for obs in self.units(unit_type).idle[:unit_limit]:
+                    if obs.tag not in self.scouts_and_spots:
+                        for dist in self.ordered_exp_distances:
+                            try:
+                                location = next(value for key, value in self.expand_dis_dir.items() if key == dist)
+                                # DICT {UNIT_ID:LOCATION}
+                                active_locations = [self.scouts_and_spots[k] for k in self.scouts_and_spots]
+
+                                if location not in active_locations:
+                                    if unit_type == PROBE:
+                                        for unit in self.units(PROBE):
+                                            if unit.tag in self.scouts_and_spots:
+                                                continue
+
+                                    await self.do(obs.move(location))
+                                    self.scouts_and_spots[obs.tag] = location
+                                    break
+                            except Exception as e:
+                                pass
+
+        for obs in self.units(unit_type):
+            if obs.tag in self.scouts_and_spots:
+                if obs in [probe for probe in self.units(PROBE)]:
+                    await self.do(obs.move(self.random_location_variance(self.scouts_and_spots[obs.tag])))
+
     async def intel(self):
 
-        # for game_info: https://github.com/Dentosal/python-sc2/blob/master/sc2/game_info.py#L162
-        #print(self.game_info.map_size)
-        # flip around. It's y, x when you're dealing with an array.
         game_data = np.zeros((self.game_info.map_size[1], self.game_info.map_size[0], 3), np.uint8)
 
-        # UNIT: [SIZE, (BGR COLOR)]
-        '''from sc2.constants import NEXUS, PROBE, PYLON, ASSIMILATOR, GATEWAY, \
- CYBERNETICSCORE, STARGATE, VOIDRAY'''
         draw_dict = {
                      NEXUS: [15, (0, 255, 0)],
                      PYLON: [3, (20, 235, 0)],
@@ -120,8 +174,8 @@ class SentdeBot(sc2.BotAI):
                 pos = unit.position
                 cv2.circle(game_data, (int(pos[0]), int(pos[1])), draw_dict[unit_type][0], draw_dict[unit_type][1], -1)
 
-        # NOT THE MOST IDEAL, BUT WHATEVER LOL
-        main_base_names = ["nexus", "commandcenter", "hatchery"]
+        # from Александр Тимофеев via YT
+        main_base_names = ['nexus', 'commandcenter', 'orbitalcommand', 'planetaryfortress', 'hatchery']
         for enemy_building in self.known_enemy_structures:
             pos = enemy_building.position
             if enemy_building.name.lower() not in main_base_names:
@@ -216,7 +270,7 @@ class SentdeBot(sc2.BotAI):
 
     async def expand(self):
         try:
-            if self.units(NEXUS).amount < (self.iteration / self.ITERATIONS_PER_MINUTE)/2 and self.can_afford(NEXUS):
+            if self.units(NEXUS).amount < self.time/2 and self.can_afford(NEXUS):
                 await self.expand_now()
         except Exception as e:
             print(str(e))
@@ -239,7 +293,7 @@ class SentdeBot(sc2.BotAI):
                         await self.build(ROBOTICSFACILITY, near=pylon)
 
             if self.units(CYBERNETICSCORE).ready.exists:
-                if len(self.units(STARGATE)) < (self.iteration / self.ITERATIONS_PER_MINUTE):
+                if len(self.units(STARGATE)) < self.time:
                     if self.can_afford(STARGATE) and not self.already_pending(STARGATE):
                         await self.build(STARGATE, near=pylon)
 
@@ -261,27 +315,17 @@ class SentdeBot(sc2.BotAI):
         if len(self.units(VOIDRAY).idle) > 0:
 
             target = False
-            if self.iteration > self.do_something_after:
+            if self.time > self.do_something_after:
                 if self.use_model:
                     prediction = self.model.predict([self.flipped.reshape([-1, 176, 200, 3])])
                     choice = np.argmax(prediction[0])
-                    #print('prediction: ',choice)
-
-                    choice_dict = {0: "No Attack!",
-                                   1: "Attack close to our nexus!",
-                                   2: "Attack Enemy Structure!",
-                                   3: "Attack Eneemy Start!"}
-
-                    print("Choice #{}:{}".format(choice, choice_dict[choice]))
-
                 else:
                     choice = random.randrange(0, 4)
 
-
                 if choice == 0:
                     # no attack
-                    wait = random.randrange(20,165)
-                    self.do_something_after = self.iteration + wait
+                    wait = random.randrange(7, 100)/100
+                    self.do_something_after = self.time + wait
 
                 elif choice == 1:
                     #attack_unit_closest_nexus
@@ -303,13 +347,9 @@ class SentdeBot(sc2.BotAI):
 
                 y = np.zeros(4)
                 y[choice] = 1
-                #print(y)
-                self.train_data.append([y,self.flipped])
-
-            #print(len(self.train_data))
-
+                self.train_data.append([y, self.flipped])
 
 run_game(maps.get("AbyssalReefLE"), [
-    Bot(Race.Protoss, SentdeBot(use_model=True)),
+    Bot(Race.Protoss, SentdeBot(use_model=False)),
     Computer(Race.Protoss, Difficulty.Medium),
     ], realtime=False)

@@ -102,12 +102,12 @@ class SentdeBot(sc2.BotAI):
         for UNIT in aggressive_units:
             if self.units(UNIT).amount > aggressive_units[UNIT][0] and self.units(UNIT).amount > aggressive_units[UNIT][1]:
                 for s in self.units(UNIT).idle:
-                    await self.do(s.attack(self.find_target(self.state)))
+                    await self.do(s.take_action(self.find_target(self.state)))
 
             elif self.units(UNIT).amount > aggressive_units[UNIT][1]:
                 if len(self.known_enemy_units) > 0:
                     for s in self.units(UNIT).idle:
-                        await self.do(s.attack(random.choice(self.known_enemy_units)))
+                        await self.do(s.take_action(random.choice(self.known_enemy_units)))
 
 
 if __name__ == '__main__':

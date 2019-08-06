@@ -249,7 +249,7 @@ class SentdeBot(sc2.BotAI):
 
                 if target:
                     for vr in self.units(VOIDRAY).idle:
-                        await self.do(vr.attack(target))
+                        await self.do(vr.take_action(target))
                 y = np.zeros(4)
                 y[choice] = 1
                 print(y)

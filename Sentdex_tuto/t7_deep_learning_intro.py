@@ -110,7 +110,7 @@ class SentdeBot(sc2.BotAI):
 
         for UNIT in aggressive_units:
             for s in self.units(UNIT).idle:
-                await self.do(s.attack(self.find_target(self.state)))
+                await self.do(s.take_action(self.find_target(self.state)))
 
 
 run_game(maps.get("AbyssalReefLE"), [

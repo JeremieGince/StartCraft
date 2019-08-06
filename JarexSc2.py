@@ -63,11 +63,12 @@ class JarexSc2(sc2.BotAI):
 
     do_something_after = 0
 
-    def __init__(self, use_model, human_control=False, debug=False):
+    def __init__(self, use_model, human_control=False, debug=False, take_training_data=True):
         super(JarexSc2, self).__init__()
         self.use_model = use_model
         self.human_control = human_control
         self.debug = debug
+        self.take_training_data = take_training_data
         assert (use_model and human_control) is False, "Both use_model and human_control, can't be True"
 
         self.intel_out = None
@@ -105,7 +106,7 @@ class JarexSc2(sc2.BotAI):
         print(f"train_data amount: {len(self.training_data['data'])}")
         # print(f"Ennemy killed: {self._game_info.killed_enemy}")
 
-        if game_result == sc2.Result.Victory:
+        if game_result == sc2.Result.Victory and self.take_training_data:
             folder = f"train_data_{len(self.attack_group_choices)}_choices"
             filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['data'])}.npy"
             if not os.path.exists(f"training_data/{folder}"):

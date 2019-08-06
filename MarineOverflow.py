@@ -47,8 +47,8 @@ class MarineOverflow(JarexTerran):
                                                       "upgrade": []}
                                 }
 
-    def __init__(self, use_model=False, human_control=False, debug=False):
-        super(MarineOverflow, self).__init__(use_model, human_control, debug)
+    def __init__(self, use_model=False, human_control=False, debug=False, take_training_data=True):
+        super(MarineOverflow, self).__init__(use_model, human_control, debug, take_training_data)
         # faire le scout group, faire un trucs que c'est moi qui fait les choix pendant la game ou random ou par models.
         # faire l'affichage de données, finir d'écouter les tuto pour avoir plus d'idées
 

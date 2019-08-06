@@ -84,8 +84,8 @@ class JarexTerran(JarexSc2):
     RATIO_DEF_ATT_UNITS = 0.05
     MIN_ARMY_SIZE_FOR_ATTACK = 50
 
-    def __init__(self, use_model=False, human_control=False, debug=False):
-        super(JarexTerran, self).__init__(use_model, human_control, debug)
+    def __init__(self, use_model=False, human_control=False, debug=False, take_training_data=True):
+        super(JarexTerran, self).__init__(use_model, human_control, debug, take_training_data)
 
     async def create_supply_depot(self):
         await super(JarexTerran, self).create_supply_depot()

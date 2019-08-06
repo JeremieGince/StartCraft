@@ -60,8 +60,8 @@ class JarexProtoss(JarexSc2):
     RATIO_DEF_ATT_UNITS = 0.005
     MIN_ARMY_SIZE_FOR_ATTACK = 25
 
-    def __init__(self, use_model=False, human_control=False, debug=False):
-        super(JarexProtoss, self).__init__(use_model, human_control, debug)
+    def __init__(self, use_model=False, human_control=False, debug=False, take_training_data=True):
+        super(JarexProtoss, self).__init__(use_model, human_control, debug, take_training_data)
 
         self.MAX_SUPPLY_LEFT = 20
 

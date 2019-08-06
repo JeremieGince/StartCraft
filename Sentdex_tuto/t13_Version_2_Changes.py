@@ -14,18 +14,19 @@ import keras
 #os.environ["SC2PATH"] = '/starcraftstuff/StarCraftII/'
 HEADLESS = False
 
+
 class SentdeBot(sc2.BotAI):
     def __init__(self, use_model=False):
-        self.ITERATIONS_PER_MINUTE = 165
+        #self.ITERATIONS_PER_MINUTE = 165
+
         self.MAX_WORKERS = 50
         self.do_something_after = 0
         self.use_model = use_model
 
         self.train_data = []
-        #####
         if self.use_model:
             print("USING MODEL!")
-            self.model = keras.models.load_model("BasicCNN-10-epochs-0.0001-LR-STAGE1")  # "BasicCNN-30-epochs-0.0001-LR-4.2"
+            self.model = keras.models.load_model("BasicCNN-30-epochs-0.0001-LR-4.2")
 
     def on_end(self, game_result):
         print('--- on_end called ---')
@@ -38,7 +39,11 @@ class SentdeBot(sc2.BotAI):
                 f.write("Random {}\n".format(game_result))
 
     async def on_step(self, iteration):
-        self.iteration = iteration
+        #self.iteration = iteration
+        ################
+        self.time = (self.state.game_loop/22.4) / 60
+        print('Time:',self.time)
+        ###############
         await self.scout()
         await self.distribute_workers()
         await self.build_workers()
@@ -216,7 +221,8 @@ class SentdeBot(sc2.BotAI):
 
     async def expand(self):
         try:
-            if self.units(NEXUS).amount < (self.iteration / self.ITERATIONS_PER_MINUTE)/2 and self.can_afford(NEXUS):
+            #######################################################
+            if self.units(NEXUS).amount < self.time/2 and self.can_afford(NEXUS):
                 await self.expand_now()
         except Exception as e:
             print(str(e))
@@ -239,7 +245,8 @@ class SentdeBot(sc2.BotAI):
                         await self.build(ROBOTICSFACILITY, near=pylon)
 
             if self.units(CYBERNETICSCORE).ready.exists:
-                if len(self.units(STARGATE)) < (self.iteration / self.ITERATIONS_PER_MINUTE):
+                #################################################
+                if len(self.units(STARGATE)) < self.time:
                     if self.can_afford(STARGATE) and not self.already_pending(STARGATE):
                         await self.build(STARGATE, near=pylon)
 
@@ -261,27 +268,24 @@ class SentdeBot(sc2.BotAI):
         if len(self.units(VOIDRAY).idle) > 0:
 
             target = False
-            if self.iteration > self.do_something_after:
+            #################################################
+            #################################################
+            if self.time > self.do_something_after:
                 if self.use_model:
                     prediction = self.model.predict([self.flipped.reshape([-1, 176, 200, 3])])
                     choice = np.argmax(prediction[0])
-                    #print('prediction: ',choice)
-
-                    choice_dict = {0: "No Attack!",
-                                   1: "Attack close to our nexus!",
-                                   2: "Attack Enemy Structure!",
-                                   3: "Attack Eneemy Start!"}
-
-                    print("Choice #{}:{}".format(choice, choice_dict[choice]))
-
                 else:
                     choice = random.randrange(0, 4)
 
 
                 if choice == 0:
                     # no attack
-                    wait = random.randrange(20,165)
-                    self.do_something_after = self.iteration + wait
+                    #################################################
+                    #################################################
+                    wait = random.randrange(7,100)/100
+                    self.do_something_after = self.time + wait
+                    #################################################
+                    #################################################
 
                 elif choice == 1:
                     #attack_unit_closest_nexus
@@ -303,13 +307,9 @@ class SentdeBot(sc2.BotAI):
 
                 y = np.zeros(4)
                 y[choice] = 1
-                #print(y)
-                self.train_data.append([y,self.flipped])
-
-            #print(len(self.train_data))
-
+                self.train_data.append([y, self.flipped])
 
 run_game(maps.get("AbyssalReefLE"), [
-    Bot(Race.Protoss, SentdeBot(use_model=True)),
+    Bot(Race.Protoss, SentdeBot(use_model=False)),
     Computer(Race.Protoss, Difficulty.Medium),
     ], realtime=False)
