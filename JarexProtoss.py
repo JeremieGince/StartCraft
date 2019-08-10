@@ -25,9 +25,15 @@ class JarexProtoss(JarexSc2):
                            UnitTypeId.VOIDRAY: {"max": 50, "priority": 25, "maker_class": UnitTypeId.STARGATE, "supply": 4},  # 13
                            UnitTypeId.COLOSSUS: {"max": 50, "priority": 5, "maker_class": UnitTypeId.ROBOTICSFACILITY,  # 4
                                                  "supply": 6},
+                           UnitTypeId.IMMORTAL: {"max": 50, "priority": 5, "maker_class": UnitTypeId.ROBOTICSFACILITY,
+                                                 "supply": 6},
                            UnitTypeId.CARRIER: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,  # 1
                                                 "supply": 6},
-                           UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8}}
+                           UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8},
+                           UnitTypeId.SENTRY: {"max": 50, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
+                           UnitTypeId.TEMPEST: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,
+                                                "supply": 6}
+                           }
 
     SCOUT_CLASS = {UnitTypeId.OBSERVER: {"max": 1, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY, "supply": 1}}
 
@@ -115,7 +121,7 @@ if __name__ == '__main__':
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
         Bot(JarexProtoss.BOTRACE, JarexProtoss(human_control=False, debug=True)),
-        Computer(Race.Terran, Difficulty.Medium)
+        Computer(Race.Zerg, Difficulty.Hard)
     ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
