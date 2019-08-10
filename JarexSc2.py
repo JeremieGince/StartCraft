@@ -110,7 +110,7 @@ class JarexSc2(sc2.BotAI):
 
         if game_result == sc2.Result.Victory and self.take_training_data:
 
-            folder = f"train_data_{len(self.attack_group_choices)}_choices" \
+            folder = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices" \
                 f"_{len(self.training_data['create_units_data'])}_units_{str(self.BOTRACE)}"
 
             filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['actions_choice_data'])}"
@@ -281,17 +281,16 @@ class JarexSc2(sc2.BotAI):
             if not self.iteration % info["priority"]:
                 await self.create_unit(unit_class, info)
 
-    async def create_unit(self, unit_class, info=None):
+    async def create_unit(self, unit_class, info=None, n=1):
         if info is None:
             info = self.MILITARY_UNIT_CLASS[unit_class]
         units = self.units(unit_class)
-        makers = self.units(info["maker_class"]).ready.noqueue
-        if not makers:
-            return False
-        if units.amount < info["max"] and self.supply_left >= info["supply"]:
-            for maker in makers:
-                if self.can_afford(unit_class):
-                    self.current_actions.append(maker.train(unit_class))
+        makers = self.units(info["maker_class"]).ready
+        if units.amount < info["max"] and self.supply_left >= info["supply"] and makers.amount > 0:
+            for _ in range(n):
+                makers = makers.noqueue
+                if self.can_afford(unit_class) and makers.amount > 0:
+                    self.current_actions.append(makers.random.train(unit_class))
             check = True
         else:
             check = False
@@ -472,12 +471,12 @@ class JarexSc2(sc2.BotAI):
             for i, c in enumerate(choices):
                 for _ in range(weights[i]):
                     weighted_choices.append(c)
-            weighted_choices.append(None)
+            weighted_choices.extend([None]*(25 if self.expend_count < self.MIN_EXPENSION else 1))
             class_choice = random.choice(weighted_choices)
 
             none_choice = len(list(self.MILITARY_UNIT_CLASS.keys()))
             if class_choice is not None:
-                check = await self.create_unit(class_choice)
+                check = await self.create_unit(class_choice, n=1)
                 choice = list(self.MILITARY_UNIT_CLASS.keys()).index(class_choice) if check else none_choice
             else:
                 choice = none_choice
