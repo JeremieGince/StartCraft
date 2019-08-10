@@ -19,13 +19,13 @@ class JarexProtoss(JarexSc2):
     BOTRACE = Race.Protoss
     BOTNAME = "JarexProtoss"
 
-    MILITARY_UNIT_CLASS = {UnitTypeId.ZEALOT: {"max": 6, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
-                           UnitTypeId.STALKER: {"max": 11, "priority": 2, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
-                           UnitTypeId.ADEPT: {"max": 6, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
-                           UnitTypeId.VOIDRAY: {"max": 13, "priority": 2, "maker_class": UnitTypeId.STARGATE, "supply": 4},
-                           UnitTypeId.COLOSSUS: {"max": 4, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY,
+    MILITARY_UNIT_CLASS = {UnitTypeId.ZEALOT: {"max": 50, "priority": 5, "maker_class": UnitTypeId.GATEWAY, "supply": 2},  # 6
+                           UnitTypeId.STALKER: {"max": 50, "priority": 20, "maker_class": UnitTypeId.GATEWAY, "supply": 2},  # 11
+                           UnitTypeId.ADEPT: {"max": 50, "priority": 5, "maker_class": UnitTypeId.GATEWAY, "supply": 2},  # 6
+                           UnitTypeId.VOIDRAY: {"max": 50, "priority": 25, "maker_class": UnitTypeId.STARGATE, "supply": 4},  # 13
+                           UnitTypeId.COLOSSUS: {"max": 50, "priority": 5, "maker_class": UnitTypeId.ROBOTICSFACILITY,  # 4
                                                  "supply": 6},
-                           UnitTypeId.CARRIER: {"max": 1, "priority": 1, "maker_class": UnitTypeId.STARGATE,
+                           UnitTypeId.CARRIER: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,  # 1
                                                 "supply": 6},
                            UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8}}
 
@@ -115,7 +115,7 @@ if __name__ == '__main__':
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
         Bot(JarexProtoss.BOTRACE, JarexProtoss(human_control=False, debug=True)),
-        Computer(Race.Zerg, Difficulty.Hard)
+        Computer(Race.Terran, Difficulty.Medium)
     ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
