@@ -32,7 +32,7 @@ class JarexProtoss(JarexSc2):
                            UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8},
                            UnitTypeId.SENTRY: {"max": 50, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
                            UnitTypeId.TEMPEST: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,
-                                                "supply": 6}
+                                                "supply": 5}
                            }
 
     SCOUT_CLASS = {UnitTypeId.OBSERVER: {"max": 1, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY, "supply": 1}}

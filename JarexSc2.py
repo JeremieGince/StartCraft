@@ -86,6 +86,9 @@ class JarexSc2(sc2.BotAI):
 
         self.training_data = {"params": {}, "actions_choice_data": list(), "create_units_data": list()}
 
+        self.DIRECTORY_PATH = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices" \
+                              f"_{len(self.MILITARY_UNIT_CLASS)+1}_units"
+
     def on_start(self):
         self.army_units = Units(list(), self._game_data)
         self.attack_group = Units(list(), self._game_data)
@@ -110,15 +113,12 @@ class JarexSc2(sc2.BotAI):
 
         if game_result == sc2.Result.Victory and self.take_training_data:
 
-            folder = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices" \
-                f"_{len(self.training_data['create_units_data'])}_units_{str(self.BOTRACE)}"
-
             filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['actions_choice_data'])}"
             filename += f"_{len(self.training_data['create_units_data'])}.npy"
 
-            if not os.path.exists(f"training_data/{folder}"):
-                os.makedirs(f"training_data/{folder}")
-            np.save(f"training_data/{folder}/{filename}", self.training_data)
+            if not os.path.exists(f"training_data/{self.DIRECTORY_PATH}"):
+                os.makedirs(f"training_data/{self.DIRECTORY_PATH}")
+            np.save(f"training_data/{self.DIRECTORY_PATH}/{filename}", self.training_data)
 
     async def on_unit_created(self, unit):
         if unit.type_id in self.SCOUT_CLASS and not self.scout_group_is_complete():
@@ -253,7 +253,7 @@ class JarexSc2(sc2.BotAI):
                             < info["max"] and self.can_afford(b_class) and not self.already_pending(b_class):
                         await self.build(b_class,
                                          near=self.random_location_variance(cmdcs.random.position, variance=10),
-                                         max_distance=100, placement_step=(30 if info["add_on"] else 10))
+                                         max_distance=75, placement_step=(20 if info["add_on"] else 10))
                     for b in builds.noqueue:
                         if b.add_on_tag == 0 and info["add_on"]:
                             add_on_choice = random.choice(info["add_on"])
@@ -339,11 +339,13 @@ class JarexSc2(sc2.BotAI):
         if len(self.army_units) \
                 and len(self.defend_group) > self.RATIO_DEF_ATT_UNITS * len(self.army_units) \
                 and ((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units)) / 2 > len(self.attack_group):
-            redistributed_group = self.defend_group.random_group_of(
-                int((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units)))
-            for unit in redistributed_group:
-                self.defend_group.remove(unit)
-                self.attack_group.append(unit)
+            n = int((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units))
+            if n > 0:
+                redistributed_group = self.defend_group.random_group_of(n)
+
+                for unit in redistributed_group:
+                    self.defend_group.remove(unit)
+                    self.attack_group.append(unit)
 
     def defend(self, units):
         if len(self.known_enemy_units):

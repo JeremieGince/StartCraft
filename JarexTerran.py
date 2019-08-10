@@ -29,10 +29,10 @@ class JarexTerran(JarexSc2):
     BOTRACE = Race.Terran
     BOTNAME = "JarexTerran"
 
-    MILITARY_UNIT_CLASS = {MARINE: {"max": 50, "priority": 25, "maker_class": BARRACKS, "supply": 1},
+    MILITARY_UNIT_CLASS = {MARINE: {"max": 50, "priority": 15, "maker_class": BARRACKS, "supply": 1},
                            SIEGETANK: {"max": 50, "priority": 1, "maker_class": FACTORY, "supply": 4},
-                           UnitTypeId.THOR: {"max": 50, "priority": 1, "maker_class": FACTORY, "supply": 6},
-                           UnitTypeId.CYCLONE: {"max": 50, "priority": 1, "maker_class": FACTORY, "supply": 2},
+                           UnitTypeId.THOR: {"max": 50, "priority": 5, "maker_class": FACTORY, "supply": 6},
+                           UnitTypeId.CYCLONE: {"max": 50, "priority": 2, "maker_class": FACTORY, "supply": 2},
                            VIKING: {"max": 50, "priority": 1, "maker_class": STARPORT, "supply": 2},
                            UnitTypeId.BATTLECRUISER: {"max": 50, "priority": 1, "maker_class": STARPORT, "supply": 6},
                            UnitTypeId.MARAUDER: {"max": 50, "priority": 3, "maker_class": BARRACKS, "supply": 2},
