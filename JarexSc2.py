@@ -84,7 +84,7 @@ class JarexSc2(sc2.BotAI):
         if self.human_control:
             print(f"attack group choices {self.attack_group_choices}")
 
-        self.training_data = {"params": {}, "data": list()}
+        self.training_data = {"params": {}, "actions_choice_data": list(), "create_units_data": list()}
 
     def on_start(self):
         self.army_units = Units(list(), self._game_data)
@@ -105,12 +105,17 @@ class JarexSc2(sc2.BotAI):
     def on_end(self, game_result):
         print("--- on_end called ---")
         print(f"game_result {game_result}")
-        print(f"train_data amount: {len(self.training_data['data'])}")
+        print(f"train_data amount: {len(self.training_data['actions_choice_data'])}")
         # print(f"Ennemy killed: {self._game_info.killed_enemy}")
 
         if game_result == sc2.Result.Victory and self.take_training_data:
-            folder = f"train_data_{len(self.attack_group_choices)}_choices"
-            filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['data'])}.npy"
+
+            folder = f"train_data_{len(self.attack_group_choices)}_choices" \
+                f"_{len(self.training_data['create_units_data'])}_units_{str(self.BOTRACE)}"
+
+            filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['actions_choice_data'])}"
+            filename += f"_{len(self.training_data['create_units_data'])}.npy"
+
             if not os.path.exists(f"training_data/{folder}"):
                 os.makedirs(f"training_data/{folder}")
             np.save(f"training_data/{folder}/{filename}", self.training_data)
@@ -282,11 +287,15 @@ class JarexSc2(sc2.BotAI):
         units = self.units(unit_class)
         makers = self.units(info["maker_class"]).ready.noqueue
         if not makers:
-            return None
+            return False
         if units.amount < info["max"] and self.supply_left >= info["supply"]:
             for maker in makers:
                 if self.can_afford(unit_class):
                     self.current_actions.append(maker.train(unit_class))
+            check = True
+        else:
+            check = False
+        return check
 
     async def build_scout(self):
         cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
@@ -410,7 +419,7 @@ class JarexSc2(sc2.BotAI):
                     print(f"You take {choice}")
             else:
 
-                defend_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 6
+                defend_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 10
                 attack_units_weight = 10 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 5
                 attack_struct_weight = 4 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
                 attack_estl_weight = 4 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
@@ -433,8 +442,8 @@ class JarexSc2(sc2.BotAI):
 
             y = np.zeros(len(self.attack_group_choices))
             y[choice] = 1
-            print(y) if self.debug else 0
-            self.training_data["data"].append([y, self.intel_out])
+            print(f"action choice: {y}") if self.debug else 0
+            self.training_data["actions_choice_data"].append([y, self.intel_out])
         try:
             await self.attack_group_choices[self.current_action_choice]()
         except Exception as e:
@@ -455,7 +464,6 @@ class JarexSc2(sc2.BotAI):
                 choice = choice[0]
                 print(f"You take {choice}")
         else:
-
             weights = [info["priority"] for c, info in self.MILITARY_UNIT_CLASS.items()]
             choices = list(self.MILITARY_UNIT_CLASS.keys())
             # weighted_choices = sum([weights[i] * [choices[i]] for i in range(len(choices))])
@@ -467,13 +475,17 @@ class JarexSc2(sc2.BotAI):
             weighted_choices.append(None)
             class_choice = random.choice(weighted_choices)
 
+            none_choice = len(list(self.MILITARY_UNIT_CLASS.keys()))
             if class_choice is not None:
-                await self.create_unit(class_choice)
+                check = await self.create_unit(class_choice)
+                choice = list(self.MILITARY_UNIT_CLASS.keys()).index(class_choice) if check else none_choice
+            else:
+                choice = none_choice
 
-        # y = np.zeros(len(self.attack_group_choices))
-        # y[choice] = 1
-        # print(y) if self.debug else 0
-        # self.training_data["data"].append([y, self.intel_out])
+        y = np.zeros(len(self.MILITARY_UNIT_CLASS)+1)
+        y[choice] = 1
+        print(f"unit choice: {y}") if self.debug else 0
+        self.training_data["create_units_data"].append([y, self.intel_out])
 
     def random_location_variance(self, location, variance=100):
         x = location[0]
@@ -504,7 +516,7 @@ class JarexSc2(sc2.BotAI):
             self.create_scout_points()
             for i, scout in enumerate(self.scout_group):
                 if scout.is_idle:
-                    move_to = self.random_location_variance(self.scout_points[i])
+                    move_to = self.random_location_variance(self.scout_points[i], variance=75)
                     self.current_actions.append(scout.move(move_to))
 
         if not self.scout_group_is_complete():
