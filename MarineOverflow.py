@@ -19,8 +19,8 @@ class MarineOverflow(JarexTerran):
     MIN_ARMY_SIZE_FOR_ATTACK = 25
     RATIO_DEF_ATT_UNITS = 0.05
 
-    MILITARY_UNIT_CLASS = {UnitTypeId.MARINE: {"max": 118, "priority": 1, "maker_class": UnitTypeId.BARRACKS, "supply": 1},
-                           UnitTypeId.MEDIVAC: {"max": 3, "priority": 2, "maker_class": UnitTypeId.STARPORT, "supply": 6}}
+    MILITARY_UNIT_CLASS = {UnitTypeId.MARINE: {"max": 118, "priority": 50, "maker_class": UnitTypeId.BARRACKS, "supply": 1},
+                           UnitTypeId.MEDIVAC: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARPORT, "supply": 6}}
 
     MILITARY_BUILDINGS_CLASS = {UnitTypeId.BARRACKS: {"priority": 1, "max": 10,
                                                       "avg_per_cmdc": 3, "add_on": [],
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
         Bot(MarineOverflow.BOTRACE, MarineOverflow(human_control=False, debug=True)),
         Computer(Race.Zerg, Difficulty.Hard)
-    ], realtime=True)
+    ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
     #     Bot(Race.Terran, JarexTerran()),
