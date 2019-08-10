@@ -6,7 +6,7 @@ from sc2.ids.ability_id import AbilityId
 from sc2.constants import *
 from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.upgrade_id import UpgradeId
-from sc2.player import Bot, Computer
+from sc2.player import Bot, Computer, Human
 from sc2.helpers import ControlGroup
 from sc2.units import Units
 from sc2 import position
@@ -19,10 +19,12 @@ class JarexProtoss(JarexSc2):
     BOTRACE = Race.Protoss
     BOTNAME = "JarexProtoss"
 
-    MILITARY_UNIT_CLASS = {UnitTypeId.ZEALOT: {"max": 6, "priority": 2, "maker_class": UnitTypeId.GATEWAY, "supply": 1},
-                           UnitTypeId.STALKER: {"max": 13, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
-                           UnitTypeId.VOIDRAY: {"max": 15, "priority": 1, "maker_class": UnitTypeId.STARGATE, "supply": 4},
-                           UnitTypeId.COLOSSUS: {"max": 4, "priority": 3, "maker_class": UnitTypeId.ROBOTICSFACILITY, "supply": 6},
+    MILITARY_UNIT_CLASS = {UnitTypeId.ZEALOT: {"max": 6, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
+                           UnitTypeId.STALKER: {"max": 11, "priority": 2, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
+                           UnitTypeId.ADEPT: {"max": 6, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
+                           UnitTypeId.VOIDRAY: {"max": 13, "priority": 2, "maker_class": UnitTypeId.STARGATE, "supply": 4},
+                           UnitTypeId.COLOSSUS: {"max": 4, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY,
+                                                 "supply": 6},
                            UnitTypeId.CARRIER: {"max": 1, "priority": 1, "maker_class": UnitTypeId.STARGATE,
                                                 "supply": 6},
                            UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8}}
@@ -112,8 +114,8 @@ if __name__ == '__main__':
     from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-        Bot(JarexProtoss.BOTRACE, JarexProtoss(debug=True)),
-        Computer(Race.Terran, Difficulty.Medium)
+        Bot(JarexProtoss.BOTRACE, JarexProtoss(human_control=False, debug=True)),
+        Computer(Race.Zerg, Difficulty.Hard)
     ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
@@ -125,3 +127,8 @@ if __name__ == '__main__':
     #     Bot(Race.Terran, JarexTerran()),
     #     Bot(Race.Terran, JarexTerran())
     # ], realtime=False)
+
+    # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
+    #     Human(Race.Zerg, name="Dummy"),
+    #     Bot(JarexProtoss.BOTRACE, JarexProtoss(human_control=False, debug=False), name=JarexProtoss.BOTNAME)
+    # ], realtime=True)
