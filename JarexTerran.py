@@ -29,15 +29,15 @@ class JarexTerran(JarexSc2):
     BOTRACE = Race.Terran
     BOTNAME = "JarexTerran"
 
-    MILITARY_UNIT_CLASS = {MARINE: {"max": 50, "priority": 1, "maker_class": BARRACKS, "supply": 1},
-                           SIEGETANK: {"max": 0, "priority": 20, "maker_class": FACTORY, "supply": 4},
-                           UnitTypeId.THOR: {"max": 10, "priority": 1, "maker_class": FACTORY, "supply": 6},
-                           UnitTypeId.CYCLONE: {"max": 10, "priority": 1, "maker_class": FACTORY, "supply": 2},
-                           VIKING: {"max": 0, "priority": 50, "maker_class": STARPORT, "supply": 2},
-                           UnitTypeId.BATTLECRUISER: {"max": 10, "priority": 1, "maker_class": STARPORT, "supply": 6},
-                           UnitTypeId.MARAUDER: {"max": 0, "priority": 3, "maker_class": BARRACKS, "supply": 2},
-                           UnitTypeId.GHOST: {"max": 15, "priority": 2, "maker_class": BARRACKS, "supply": 2},
-                           UnitTypeId.MEDIVAC: {"max": 2, "priority": 50, "maker_class": STARPORT, "supply": 6}}
+    MILITARY_UNIT_CLASS = {MARINE: {"max": 50, "priority": 25, "maker_class": BARRACKS, "supply": 1},
+                           SIEGETANK: {"max": 50, "priority": 1, "maker_class": FACTORY, "supply": 4},
+                           UnitTypeId.THOR: {"max": 50, "priority": 1, "maker_class": FACTORY, "supply": 6},
+                           UnitTypeId.CYCLONE: {"max": 50, "priority": 1, "maker_class": FACTORY, "supply": 2},
+                           VIKING: {"max": 50, "priority": 1, "maker_class": STARPORT, "supply": 2},
+                           UnitTypeId.BATTLECRUISER: {"max": 50, "priority": 1, "maker_class": STARPORT, "supply": 6},
+                           UnitTypeId.MARAUDER: {"max": 50, "priority": 3, "maker_class": BARRACKS, "supply": 2},
+                           UnitTypeId.GHOST: {"max": 50, "priority": 10, "maker_class": BARRACKS, "supply": 2},
+                           UnitTypeId.MEDIVAC: {"max": 50, "priority": 10, "maker_class": STARPORT, "supply": 6}}
 
     SCOUT_CLASS = {UnitTypeId.RAVEN: {"max": 1, "priority": 1, "maker_class": STARPORT, "supply": 1},
                    MARINE: {"max": 1, "priority": 1, "maker_class": BARRACKS, "supply": 1}}
@@ -113,7 +113,7 @@ if __name__ == '__main__':
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
         Bot(Race.Terran, JarexTerran()),
-        Computer(Race.Zerg, Difficulty.Easy)
+        Computer(Race.Zerg, Difficulty.Hard)
     ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
