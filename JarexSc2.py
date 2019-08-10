@@ -63,6 +63,8 @@ class JarexSc2(sc2.BotAI):
 
     do_something_after = 0
 
+    MIN_EXPENSION = 2
+
     def __init__(self, use_model, human_control=False, debug=False, take_training_data=True):
         super(JarexSc2, self).__init__()
         self.use_model = use_model
@@ -180,8 +182,8 @@ class JarexSc2(sc2.BotAI):
         except Exception:
             pass
 
+        # await self.create_military_units_manually()
         await self.create_military_units()
-
         await self.take_action()
 
         # self.defend_until_die()
@@ -269,17 +271,22 @@ class JarexSc2(sc2.BotAI):
         except Exception:
             pass
 
-    async def create_military_units(self):
+    async def create_military_units_manually(self):
         for unit_class, info in self.MILITARY_UNIT_CLASS.items():
             if not self.iteration % info["priority"]:
-                units = self.units(unit_class)
-                makers = self.units(info["maker_class"]).ready.noqueue
-                if not makers:
-                    continue
-                if units.amount < info["max"] and self.supply_left >= info["supply"]:
-                    for maker in makers:
-                        if self.can_afford(unit_class):
-                            self.current_actions.append(maker.train(unit_class))
+                await self.create_unit(unit_class, info)
+
+    async def create_unit(self, unit_class, info=None):
+        if info is None:
+            info = self.MILITARY_UNIT_CLASS[unit_class]
+        units = self.units(unit_class)
+        makers = self.units(info["maker_class"]).ready.noqueue
+        if not makers:
+            return None
+        if units.amount < info["max"] and self.supply_left >= info["supply"]:
+            for maker in makers:
+                if self.can_afford(unit_class):
+                    self.current_actions.append(maker.train(unit_class))
 
     async def build_scout(self):
         cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
@@ -314,7 +321,7 @@ class JarexSc2(sc2.BotAI):
                     and not self.already_pending(cmdc_type):
                 # print(f"We lost {self.expend_count-self.units(cmdc_type).amount} cmdc")
                 await self.expand_now()
-            elif self.expend_count == 1 and self.can_afford(cmdc_type) and not self.already_pending(cmdc_type):
+            elif self.expend_count < self.MIN_EXPENSION and self.can_afford(cmdc_type) and not self.already_pending(cmdc_type):
                 await self.expand_now()
                 self.expend_count += 1
         except ValueError:
@@ -403,7 +410,7 @@ class JarexSc2(sc2.BotAI):
                     print(f"You take {choice}")
             else:
 
-                defend_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 10
+                defend_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 6
                 attack_units_weight = 10 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 5
                 attack_struct_weight = 4 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
                 attack_estl_weight = 4 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
@@ -426,12 +433,47 @@ class JarexSc2(sc2.BotAI):
 
             y = np.zeros(len(self.attack_group_choices))
             y[choice] = 1
-            print(y)
+            print(y) if self.debug else 0
             self.training_data["data"].append([y, self.intel_out])
         try:
             await self.attack_group_choices[self.current_action_choice]()
         except Exception as e:
             print(str(e))
+
+    async def create_military_units(self):
+        if self.use_model:
+            prediction = self.model.predict([self.intel_out.reshape([-1, 176, 200, 3])])
+            choice = np.argmax(prediction[0])
+            # print('prediction: ',choice)
+
+        elif self.human_control:
+            choice = key_check([str(c) for c in list(self.attack_group_choices.keys())])
+            if not len(choice):
+                print(f"You take no choice")
+                return None
+            else:
+                choice = choice[0]
+                print(f"You take {choice}")
+        else:
+
+            weights = [info["priority"] for c, info in self.MILITARY_UNIT_CLASS.items()]
+            choices = list(self.MILITARY_UNIT_CLASS.keys())
+            # weighted_choices = sum([weights[i] * [choices[i]] for i in range(len(choices))])
+            assert len(weights) == len(choices)
+            weighted_choices = list()
+            for i, c in enumerate(choices):
+                for _ in range(weights[i]):
+                    weighted_choices.append(c)
+            weighted_choices.append(None)
+            class_choice = random.choice(weighted_choices)
+
+            if class_choice is not None:
+                await self.create_unit(class_choice)
+
+        # y = np.zeros(len(self.attack_group_choices))
+        # y[choice] = 1
+        # print(y) if self.debug else 0
+        # self.training_data["data"].append([y, self.intel_out])
 
     def random_location_variance(self, location, variance=100):
         x = location[0]
@@ -645,6 +687,72 @@ class JarexSc2(sc2.BotAI):
                 re_key = key
                 break
         return re_key
+
+    async def distribute_workers(self):
+        """
+        Distributes workers across all the bases taken.
+        WARNING: This is quite slow when there are lots of workers or multiple bases.
+        """
+
+        # TODO:
+        # OPTIMIZE: Assign idle workers smarter
+        # OPTIMIZE: Never use same worker mutltiple times
+        owned_expansions = self.owned_expansions
+        worker_pool = []
+        actions = []
+
+        for idle_worker in self.workers.idle:
+            mf = self.state.mineral_field.closest_to(idle_worker)
+            actions.append(idle_worker.gather(mf))
+
+        for location, townhall in owned_expansions.items():
+            workers = self.workers.closer_than(20, location)
+            actual = townhall.assigned_harvesters
+            ideal = townhall.ideal_harvesters
+            excess = actual - ideal
+            if actual > ideal:
+                worker_pool.extend(workers.random_group_of(min(excess, len(workers))))
+                continue
+        for g in self.geysers:
+            workers = self.workers.closer_than(5, g)
+            actual = g.assigned_harvesters
+            ideal = g.ideal_harvesters
+            excess = actual - ideal
+            if actual > ideal:
+                worker_pool.extend(workers.random_group_of(min(excess, len(workers))))
+                continue
+
+        for g in self.geysers:
+            actual = g.assigned_harvesters
+            ideal = g.ideal_harvesters
+            deficit = ideal - actual
+
+            for _ in range(deficit):
+                if worker_pool:
+                    w = worker_pool.pop()
+                    if len(w.orders) == 1 and w.orders[0].ability.id is AbilityId.HARVEST_RETURN:
+                        actions.append(w.move(g))
+                        actions.append(w.return_resource(queue=True))
+                    else:
+                        actions.append(w.gather(g))
+
+        for location, townhall in owned_expansions.items():
+            actual = townhall.assigned_harvesters
+            ideal = townhall.ideal_harvesters
+
+            deficit = ideal - actual
+            for x in range(0, deficit):
+                if worker_pool:
+                    w = worker_pool.pop()
+                    mf = self.state.mineral_field.closest_to(townhall)
+                    if len(w.orders) == 1 and w.orders[0].ability.id is AbilityId.HARVEST_RETURN:
+                        actions.append(w.move(townhall))
+                        actions.append(w.return_resource(queue=True))
+                        actions.append(w.gather(mf, queue=True))
+                    else:
+                        actions.append(w.gather(mf))
+
+        await self.do_actions(actions)
 
 
 if __name__ == '__main__':
