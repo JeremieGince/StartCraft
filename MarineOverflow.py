@@ -61,17 +61,17 @@ if __name__ == '__main__':
     from examples.terran.proxy_rax import ProxyRaxBot
     from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
 
-    # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-    #     Bot(MarineOverflow.BOTRACE, MarineOverflow(human_control=False)),
-    #     Computer(Race.Zerg, Difficulty.Easy)
-    # ], realtime=False)
+    sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
+        Bot(MarineOverflow.BOTRACE, MarineOverflow(human_control=False, debug=True)),
+        Computer(Race.Zerg, Difficulty.Hard)
+    ], realtime=True)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
     #     Bot(Race.Terran, JarexTerran()),
     #     Bot(Race.Protoss, SentdeBot())
     # ], realtime=False)
 
-    sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-        Bot(MarineOverflow.BOTRACE, MarineOverflow()),
-        Bot(JarexTerran.BOTRACE, JarexTerran(False, False))
-    ], realtime=False)
+    # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
+    #     Bot(MarineOverflow.BOTRACE, MarineOverflow()),
+    #     Bot(JarexTerran.BOTRACE, JarexTerran(False, False))
+    # ], realtime=False)
