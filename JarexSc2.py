@@ -19,6 +19,7 @@ import time
 
 from getkeys import key_check
 from QUnit import QUnit
+import torch
 
 
 class JarexSc2(sc2.BotAI):
@@ -92,6 +93,13 @@ class JarexSc2(sc2.BotAI):
 
         self.DIRECTORY_PATH = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices" \
                               f"_{len(self.MILITARY_UNIT_CLASS)+1}_units"
+
+        self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model.pth").cpu()
+        self.unit_creator_model = torch.load(f"Models/{self.BOTNAME}_unit_creator_model.pth").cpu()
+
+        # if torch.cuda.is_available():
+        #     self.action_model.cuda()
+        #     self.unit_creator_model.cuda()
 
     def on_start(self):
         self.army_units = Units(list(), self._game_data)
@@ -422,7 +430,10 @@ class JarexSc2(sc2.BotAI):
     async def take_action(self):
         if self.iteration > self.do_something_after:
             if self.use_model:
-                prediction = self.model.predict([self.intel_out.reshape([-1, 176, 200, 3])])
+                input_tensor = torch.FloatTensor(self.intel_out[np.newaxis, :, :]).unsqueeze(0).cpu()
+                # if torch.cuda.is_available():
+                #     input_tensor.cuda()
+                prediction = self.action_model(input_tensor).detach().numpy()
                 choice = np.argmax(prediction[0])
                 # print('prediction: ',choice)
 
@@ -468,9 +479,17 @@ class JarexSc2(sc2.BotAI):
 
     async def create_military_units(self):
         if self.use_model:
-            prediction = self.model.predict([self.intel_out.reshape([-1, 176, 200, 3])])
+            input_tensor = torch.FloatTensor(self.intel_out[np.newaxis, :, :]).unsqueeze(0)
+            if torch.cuda.is_available():
+                input_tensor.cuda()
+            prediction = self.unit_creator_model(input_tensor).detach().numpy()
             choice = np.argmax(prediction[0])
-            # print('prediction: ',choice)
+            print('prediction: ', choice)
+            if choice != len(self.MILITARY_UNIT_CLASS):
+                class_choice = list(self.MILITARY_UNIT_CLASS.keys())[choice]
+                print("class_choice: ", class_choice)
+                check = await self.create_unit(class_choice, n=1)
+                choice = choice if check else len(self.MILITARY_UNIT_CLASS)
 
         elif self.human_control:
             choice = key_check([str(c) for c in list(self.attack_group_choices.keys())])
