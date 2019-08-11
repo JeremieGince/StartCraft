@@ -27,13 +27,15 @@ class JarexProtoss(JarexSc2):
                                                  "supply": 6},
                            UnitTypeId.IMMORTAL: {"max": 50, "priority": 5, "maker_class": UnitTypeId.ROBOTICSFACILITY,
                                                  "supply": 6},
-                           UnitTypeId.CARRIER: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,  # 1
+                           UnitTypeId.CARRIER: {"max": 50, "priority": 0, "maker_class": UnitTypeId.STARGATE,  # 1
                                                 "supply": 6},
                            UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8},
                            UnitTypeId.SENTRY: {"max": 50, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
                            UnitTypeId.TEMPEST: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,
                                                 "supply": 5}
                            }
+
+    Q_CLASS = {UnitTypeId.ZEALOT: {"max": 50, "priority": 20, "maker_class": UnitTypeId.GATEWAY, "supply": 2}}
 
     SCOUT_CLASS = {UnitTypeId.OBSERVER: {"max": 1, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY, "supply": 1}}
 
