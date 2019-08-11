@@ -37,6 +37,7 @@ class Sc2Dataset(Dataset):
         return [torch.from_numpy(self.data[i][0]), np.argmax(self.data[i][1])]
 
     def balance_data(self):
+        random.shuffle(self.full_data)
         data_counter = dict()
         for d in self.full_data:
             key = np.argmax(d[1])
@@ -58,6 +59,8 @@ class Sc2Dataset(Dataset):
 
         for key, info in data_counter.items():
             self.data.extend(info["data"][:mean_counter])
+
+        random.shuffle(self.data)
 
     def get_data(self):
         for _, filename in enumerate(os.listdir(self.directory_path)):
