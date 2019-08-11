@@ -95,6 +95,9 @@ class ModelTrainer:
                 self.saving_function()
                 print("saved")
 
+            for phase, loader in self.data_loaders.items():
+                loader.dataset.balance_data()
+
             progress.update()
 
         self.model.eval()
