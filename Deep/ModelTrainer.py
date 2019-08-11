@@ -182,3 +182,11 @@ if __name__ == "__main__":
     model_trainer = ModelTrainer(model=model, dataset=dataset)
     model_trainer.train(5)
     model_trainer.plot_history()
+    torch.save(model, "../Models/JarexProtoss_action_model.pth")
+
+    dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=False, units_creator=True)
+    model = Sc2Net(input_chanels=1, output_size=11)
+    model_trainer = ModelTrainer(model=model, dataset=dataset)
+    model_trainer.train(5)
+    model_trainer.plot_history()
+    torch.save(model, "../Models/JarexProtoss_unit_creator_model.pth")
