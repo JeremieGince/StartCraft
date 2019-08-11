@@ -46,9 +46,16 @@ class Sc2Dataset(Dataset):
             else:
                 data_counter[key] = {"data": [d], "counter": 1}
 
-        mean_counter = int(np.mean([info["counter"] for _, info in data_counter.items()]))
-        min_counter = min([info["counter"] for _, info in data_counter.items()])
-        print(min_counter, mean_counter)
+        counters = [info["counter"] for _, info in data_counter.items()]
+        mean_counter = int(np.mean(counters))
+        min_counter = min(counters)
+        max_counter = max(counters)
+
+        counters.remove(max_counter)
+        second_max_counter = max(counters)
+
+        # print(min_counter, mean_counter, second_max_counter, max_counter)
+
         for key, info in data_counter.items():
             self.data.extend(info["data"][:mean_counter])
 
@@ -65,7 +72,7 @@ class Sc2Dataset(Dataset):
 
 
 if __name__ == "__main__":
-    dataset = Sc2Dataset("JarexProtoss", 5, 11)
+    dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=False, units_creator=True)
     print("__len__: ", len(dataset))
     for i in range(3):
         print(f"__getitem__({i}): ", dataset[i])
