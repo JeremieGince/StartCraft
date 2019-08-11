@@ -180,16 +180,18 @@ if __name__ == "__main__":
     from Deep.Sc2Dataset import Sc2Dataset
     from Deep.Models import Sc2Net
 
-    dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=True, units_creator=False)
-    model = Sc2Net(input_chanels=1, output_size=5)
-    model_trainer = ModelTrainer(model=model, dataset=dataset)
-    model_trainer.train(5)
-    model_trainer.plot_history()
-    torch.save(model, "../Models/JarexProtoss_action_model.pth")
+    # Training of action maker model
+    # dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=True, units_creator=False)
+    # model = Sc2Net(input_chanels=1, output_size=5)
+    # model_trainer = ModelTrainer(model=model, dataset=dataset)
+    # model_trainer.train(100)
+    # model_trainer.plot_history()
+    # torch.save(model, "../Models/JarexProtoss_action_model.pth")
 
+    # Training of unit maker model
     dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=False, units_creator=True)
     model = Sc2Net(input_chanels=1, output_size=11)
     model_trainer = ModelTrainer(model=model, dataset=dataset)
-    model_trainer.train(5)
+    model_trainer.train(50)
     model_trainer.plot_history()
     torch.save(model, "../Models/JarexProtoss_unit_creator_model.pth")
