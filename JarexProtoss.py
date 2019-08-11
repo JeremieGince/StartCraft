@@ -122,8 +122,9 @@ if __name__ == '__main__':
     from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-        Bot(JarexProtoss.BOTRACE, JarexProtoss(human_control=False, debug=True)),
-        Computer(Race.Zerg, Difficulty.Hard)
+        Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
+                                               debug=True, take_training_data=True)),
+        Computer(Race.Zerg, Difficulty.Medium)
     ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
