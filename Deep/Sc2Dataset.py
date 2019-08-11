@@ -18,9 +18,12 @@ class Sc2Dataset(Dataset):
 
         self.data = list()
         self.get_data()
+        temp_path = self.directory_path
         self.directory_path = "../" + self.directory_path
-        assert os.path.exists(self.directory_path), f"The dir {self.directory_path} doesn't exist"
-        self.get_data()
+        if os.path.exists(self.directory_path):
+            self.get_data()
+        else:
+            self.directory_path = temp_path
 
     def __len__(self):
         return len(self.data)
