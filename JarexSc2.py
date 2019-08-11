@@ -18,6 +18,7 @@ import os
 import time
 
 from getkeys import key_check
+from QUnit import QUnit
 
 
 class JarexSc2(sc2.BotAI):
@@ -41,11 +42,14 @@ class JarexSc2(sc2.BotAI):
 
     MILITARY_BUILDINGS_CLASS = dict()
 
+    Q_CLASS = dict()
+
     army_units = list()
     attack_group = list()
     defend_group = list()
     scout_group = list()
     medic_group = list()
+    q_group = list()
     buildings = list()
 
     scout_points = list()
@@ -95,6 +99,7 @@ class JarexSc2(sc2.BotAI):
         self.defend_group = Units(list(), self._game_data)
         self.scout_group = Units(list(), self._game_data)
         self.medic_group = Units(list(), self._game_data)
+        self.q_group = Units(list(), self._game_data)
         self.buildings = Units(list(), self._game_data)
 
         # self.create_scout_points()
@@ -123,6 +128,8 @@ class JarexSc2(sc2.BotAI):
     async def on_unit_created(self, unit):
         if unit.type_id in self.SCOUT_CLASS and not self.scout_group_is_complete():
             self.scout_group.append(unit)
+        elif unit.type_id in self.Q_CLASS and not self.q_group_is_complete():
+            self.q_group.append(QUnit(unit, self.q_group, self))
         elif unit.type_id in self.MILITARY_UNIT_CLASS:
             self.army_units.append(unit)
             if random.random() <= self.RATIO_DEF_ATT_UNITS:
@@ -135,7 +142,8 @@ class JarexSc2(sc2.BotAI):
 
     async def on_unit_destroyed(self, unit_tag):
         groups = [self.army_units, self.attack_group, self.defend_group,
-                  self.scout_group, self.medic_group, self.buildings]
+                  self.scout_group, self.medic_group, self.buildings,
+                  self.q_group]
         for group in groups:
             self.delete_unit_tag_from_group(group, unit_tag)
 
@@ -148,6 +156,13 @@ class JarexSc2(sc2.BotAI):
 
     def scout_group_is_complete(self):
         return self.scout_group.amount >= self.hm_scout_per_ennemy*len(self.enemy_start_locations)
+
+    def q_group_is_complete(self):
+        return self.q_group.amount >= 0
+
+    async def update_q_units(self):
+        for unit in self.q_group:
+            await unit.take_action()
 
     async def on_step(self, iteration):
         self.iteration = iteration
@@ -190,6 +205,7 @@ class JarexSc2(sc2.BotAI):
         # await self.create_military_units_manually()
         await self.create_military_units()
         await self.take_action()
+        await self.update_q_units()
 
         # self.defend_until_die()
 
@@ -443,8 +459,8 @@ class JarexSc2(sc2.BotAI):
 
             y = np.zeros(len(self.attack_group_choices))
             y[choice] = 1
-            print(f"action choice: {y}") if self.debug else 0
-            self.training_data["actions_choice_data"].append([y, self.intel_out])
+            # print(f"action choice: {y}") if self.debug else 0
+            self.training_data["actions_choice_data"].append([self.intel_out, y])
         try:
             await self.attack_group_choices[self.current_action_choice]()
         except Exception as e:
@@ -485,8 +501,8 @@ class JarexSc2(sc2.BotAI):
 
         y = np.zeros(len(self.MILITARY_UNIT_CLASS)+1)
         y[choice] = 1
-        print(f"unit choice: {y}") if self.debug else 0
-        self.training_data["create_units_data"].append([y, self.intel_out])
+        # print(f"unit choice: {y}") if self.debug else 0
+        self.training_data["create_units_data"].append([self.intel_out, y])
 
     def random_location_variance(self, location, variance=100):
         x = location[0]
