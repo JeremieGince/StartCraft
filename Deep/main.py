@@ -7,7 +7,7 @@ from sc2.player import Bot, Computer
 from JarexProtoss import JarexProtoss
 
 if __name__ == '__main__':
-    hm_game = 100
+    hm_game = 10
 
     races = [Race.Zerg, Race.Terran, Race.Protoss]
     difficulties = [Difficulty.Medium, Difficulty.Hard]
