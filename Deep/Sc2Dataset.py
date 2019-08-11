@@ -13,10 +13,13 @@ class Sc2Dataset(Dataset):
 
         self.data_key = "actions_choice_data" if action_maker else "create_units_data"
 
-        self.directory_path = f"../training_data/train_data_{botname}_{hm_choices}_choices_{hm_unit_class}_units"
+        self.directory_path = f"training_data/train_data_{botname}_{hm_choices}_choices_{hm_unit_class}_units"
         assert os.path.exists(self.directory_path), f"The dir {self.directory_path} doesn't exist"
 
         self.data = list()
+        self.get_data()
+        self.directory_path = "../" + self.directory_path
+        assert os.path.exists(self.directory_path), f"The dir {self.directory_path} doesn't exist"
         self.get_data()
 
     def __len__(self):
