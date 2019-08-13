@@ -95,13 +95,17 @@ class JarexSc2(sc2.BotAI):
         self.DIRECTORY_PATH_ACTION_MAKER = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices"
         self.DIRECTORY_PATH_UNIT_MAKER = f"train_data_{self.BOTNAME}_{len(self.MILITARY_UNIT_CLASS) + 1}_units"
 
-        try:
-            self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model.pth").cpu()
-        except FileNotFoundError:
-            self.action_model = torch.load(f"../Models/{self.BOTNAME}_action_model.pth").cpu()
+        if self.use_model:
+            try:
+                self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model.pth").cpu()
+            except FileNotFoundError:
+                self.action_model = torch.load(f"../Models/{self.BOTNAME}_action_model.pth").cpu()
 
-        self.unit_maker_model = Sc2UnitMakerNet(self.BOTNAME)
-        self.unit_maker_model.load()
+            self.unit_maker_model = Sc2UnitMakerNet(self.BOTNAME)
+            self.unit_maker_model.load()
+        else:
+            self.action_model = None
+            self.unit_maker_model = None
 
         self.total_enemy_killed = 0
         self.last_iteration_enemy_killed = 0
