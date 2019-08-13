@@ -19,6 +19,7 @@ import time
 
 from getkeys import key_check
 from QUnit import QUnit
+from Deep.Models import Sc2UnitMakerNet
 import torch
 
 
@@ -91,15 +92,21 @@ class JarexSc2(sc2.BotAI):
 
         self.training_data = {"params": {}, "actions_choice_data": list(), "create_units_data": list()}
 
-        self.DIRECTORY_PATH = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices" \
-                              f"_{len(self.MILITARY_UNIT_CLASS)+1}_units"
+        self.DIRECTORY_PATH_ACTION_MAKER = f"train_data_{self.BOTNAME}_{len(self.attack_group_choices)}_choices"
+        self.DIRECTORY_PATH_UNIT_MAKER = f"train_data_{self.BOTNAME}_{len(self.MILITARY_UNIT_CLASS) + 1}_units"
 
-        self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model.pth").cpu()
-        self.unit_creator_model = torch.load(f"Models/{self.BOTNAME}_unit_creator_model.pth").cpu()
+        try:
+            self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model.pth").cpu()
+        except FileNotFoundError:
+            self.action_model = torch.load(f"../Models/{self.BOTNAME}_action_model.pth").cpu()
 
-        # if torch.cuda.is_available():
-        #     self.action_model.cuda()
-        #     self.unit_creator_model.cuda()
+        self.unit_maker_model = Sc2UnitMakerNet(self.BOTNAME)
+        self.unit_maker_model.load()
+
+        self.total_enemy_killed = 0
+        self.last_iteration_enemy_killed = 0
+        self.killed_score = 0
+        self.last_killed_score = 0
 
     def on_start(self):
         self.army_units = Units(list(), self._game_data)
@@ -121,17 +128,28 @@ class JarexSc2(sc2.BotAI):
     def on_end(self, game_result):
         print("--- on_end called ---")
         print(f"game_result {game_result}")
-        print(f"train_data amount: {len(self.training_data['actions_choice_data'])}")
+        # print(f"train_data amount: {len(self.training_data['actions_choice_data'])}")
         # print(f"Ennemy killed: {self._game_info.killed_enemy}")
 
         if game_result == sc2.Result.Victory and self.take_training_data:
 
-            filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['actions_choice_data'])}"
-            filename += f"_{len(self.training_data['create_units_data'])}.npy"
+            # Action Maker saving Data
+            ac_filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['actions_choice_data'])}.npy"
 
-            if not os.path.exists(f"training_data/{self.DIRECTORY_PATH}"):
-                os.makedirs(f"training_data/{self.DIRECTORY_PATH}")
-            np.save(f"training_data/{self.DIRECTORY_PATH}/{filename}", self.training_data)
+            if not os.path.exists(f"training_data/{self.DIRECTORY_PATH_ACTION_MAKER}"):
+                os.makedirs(f"training_data/{self.DIRECTORY_PATH_ACTION_MAKER}")
+
+            np.save(f"training_data/{self.DIRECTORY_PATH_ACTION_MAKER}/{ac_filename}",
+                    {"data": self.training_data["actions_choice_data"]})
+
+            # Unit Maker saving Data
+            um_filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['create_units_data'])}.npy"
+
+            if not os.path.exists(f"training_data/{self.DIRECTORY_PATH_UNIT_MAKER}"):
+                os.makedirs(f"training_data/{self.DIRECTORY_PATH_UNIT_MAKER}")
+
+            np.save(f"training_data/{self.DIRECTORY_PATH_UNIT_MAKER}/{um_filename}",
+                    {"data": self.training_data["create_units_data"]})
 
     async def on_unit_created(self, unit):
         if unit.type_id in self.SCOUT_CLASS and not self.scout_group_is_complete():
@@ -148,6 +166,9 @@ class JarexSc2(sc2.BotAI):
         elif unit.type_id in self.CIVIL_BUILDING_CLASS:
             self.buildings.append(unit)
 
+        if unit.type_id in self.MILITARY_UNIT_CLASS:
+            self.MILITARY_UNIT_CLASS[unit.type_id]["created"] += 1
+
     async def on_unit_destroyed(self, unit_tag):
         groups = [self.army_units, self.attack_group, self.defend_group,
                   self.scout_group, self.medic_group, self.buildings,
@@ -161,6 +182,8 @@ class JarexSc2(sc2.BotAI):
             unit = unit[0]
             group.remove(unit)
             # print(f"{unit} died and removed {unit not in group} from {group}")
+            if unit.type_id in self.MILITARY_UNIT_CLASS:
+                self.MILITARY_UNIT_CLASS[unit.type_id]["dead"] += 1
 
     def scout_group_is_complete(self):
         return self.scout_group.amount >= self.hm_scout_per_ennemy*len(self.enemy_start_locations)
@@ -183,9 +206,11 @@ class JarexSc2(sc2.BotAI):
             for b in g:
                 self.buildings.append(b)
         self.buildings = Units(self.buildings, self._game_data)
+        await self.scout()
         await self.intel()
 
-        await self.scout()
+        self.get_enemy_dead_units()
+        self.update_killed_score()
 
         self.defend(units=self.defend_group)
         try:
@@ -478,18 +503,14 @@ class JarexSc2(sc2.BotAI):
             print(str(e))
 
     async def create_military_units(self):
-        if self.use_model:
-            input_tensor = torch.FloatTensor(self.intel_out[np.newaxis, :, :]).unsqueeze(0)
-            if torch.cuda.is_available():
-                input_tensor.cuda()
-            prediction = self.unit_creator_model(input_tensor).detach().numpy()
-            choice = np.argmax(prediction[0])
-            print('prediction: ', choice)
+        if self.use_model and False:
+            prediction = self.unit_maker_model(self.get_units_state()[np.newaxis, :])[0]
+            choice = int(np.argmax(prediction))
+
             if choice != len(self.MILITARY_UNIT_CLASS):
                 class_choice = list(self.MILITARY_UNIT_CLASS.keys())[choice]
-                print("class_choice: ", class_choice)
-                check = await self.create_unit(class_choice, n=1)
-                choice = choice if check else len(self.MILITARY_UNIT_CLASS)
+                print(class_choice)
+                await self.create_unit(class_choice, n=1)
 
         elif self.human_control:
             choice = key_check([str(c) for c in list(self.attack_group_choices.keys())])
@@ -500,7 +521,8 @@ class JarexSc2(sc2.BotAI):
                 choice = choice[0]
                 print(f"You take {choice}")
         else:
-            weights = [info["priority"] for c, info in self.MILITARY_UNIT_CLASS.items()]
+            # weights = [int(i["priority"] * ((i["created"]+1)/(i["dead"]+1))) for _, i in self.MILITARY_UNIT_CLASS.items()]
+            weights = [i["priority"] for _, i in self.MILITARY_UNIT_CLASS.items()]
             choices = list(self.MILITARY_UNIT_CLASS.keys())
             # weighted_choices = sum([weights[i] * [choices[i]] for i in range(len(choices))])
             assert len(weights) == len(choices)
@@ -508,20 +530,42 @@ class JarexSc2(sc2.BotAI):
             for i, c in enumerate(choices):
                 for _ in range(weights[i]):
                     weighted_choices.append(c)
-            weighted_choices.extend([None]*(25 if self.expend_count < self.MIN_EXPENSION else 1))
+            weighted_choices.extend([None]*(50 if self.expend_count < self.MIN_EXPENSION else 1))
             class_choice = random.choice(weighted_choices)
+            # print(class_choice)
 
             none_choice = len(list(self.MILITARY_UNIT_CLASS.keys()))
             if class_choice is not None:
                 check = await self.create_unit(class_choice, n=1)
-                choice = list(self.MILITARY_UNIT_CLASS.keys()).index(class_choice) if check else none_choice
+                choice = list(self.MILITARY_UNIT_CLASS.keys()).index(class_choice)  # if check else none_choice
             else:
                 choice = none_choice
 
         y = np.zeros(len(self.MILITARY_UNIT_CLASS)+1)
         y[choice] = 1
         # print(f"unit choice: {y}") if self.debug else 0
-        self.training_data["create_units_data"].append([self.intel_out, y])
+        self.training_data["create_units_data"].append([self.get_units_state(), y])
+
+    def get_units_state(self):
+        state = [self.minerals, self.vespene, self.supply_left, self.expend_count,
+                 self.killed_score, self.last_killed_score]
+        for unit_class, info in self.MILITARY_UNIT_CLASS.items():
+            class_state = [info["supply"], info["created"], info["dead"], info["mineral_cost"], info["vespene_cost"]]
+            state.extend(class_state)
+        # print(np.array(state))
+        return np.array(state)
+
+    def get_enemy_dead_units(self):
+        dead_enemies = self.state.dead_units
+        for unit in self.units.tags_in(self.state.dead_units):
+            dead_enemies.remove(unit.tag)
+        self.total_enemy_killed += len(dead_enemies)
+        self.last_iteration_enemy_killed = len(dead_enemies)
+        # print(self.total_enemy_killed, self.state.score.killed_value_units)
+
+    def update_killed_score(self):
+        self.last_killed_score = self.killed_score
+        self.killed_score = self.state.score.killed_value_units
 
     def random_location_variance(self, location, variance=100):
         x = location[0]

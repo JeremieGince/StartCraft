@@ -19,25 +19,39 @@ class JarexProtoss(JarexSc2):
     BOTRACE = Race.Protoss
     BOTNAME = "JarexProtoss"
 
-    MILITARY_UNIT_CLASS = {UnitTypeId.ZEALOT: {"max": 50, "priority": 5, "maker_class": UnitTypeId.GATEWAY, "supply": 2},  # 6
-                           UnitTypeId.STALKER: {"max": 50, "priority": 20, "maker_class": UnitTypeId.GATEWAY, "supply": 2},  # 11
-                           UnitTypeId.ADEPT: {"max": 50, "priority": 5, "maker_class": UnitTypeId.GATEWAY, "supply": 2},  # 6
-                           UnitTypeId.VOIDRAY: {"max": 50, "priority": 25, "maker_class": UnitTypeId.STARGATE, "supply": 4},  # 13
-                           UnitTypeId.COLOSSUS: {"max": 50, "priority": 5, "maker_class": UnitTypeId.ROBOTICSFACILITY,  # 4
-                                                 "supply": 6},
+    MILITARY_UNIT_CLASS = {UnitTypeId.ZEALOT: {"max": 50, "priority": 5, "maker_class": UnitTypeId.GATEWAY,
+                                               "supply": 2, "created": 0, "dead": 0,
+                                               "mineral_cost": 100, "vespene_cost": 0},
+                           UnitTypeId.STALKER: {"max": 50, "priority": 20, "maker_class": UnitTypeId.GATEWAY,
+                                                "supply": 2, "created": 0, "dead": 0, "mineral_cost": 125,
+                                                "vespene_cost": 50},
+                           UnitTypeId.ADEPT: {"max": 50, "priority": 5, "maker_class": UnitTypeId.GATEWAY, "supply": 2,
+                                              "created": 0, "dead": 0, "mineral_cost": 100, "vespene_cost": 25},
+                           UnitTypeId.VOIDRAY: {"max": 50, "priority": 25, "maker_class": UnitTypeId.STARGATE,
+                                                "supply": 4, "created": 0, "dead": 0,
+                                                "mineral_cost": 250, "vespene_cost": 150},
+                           UnitTypeId.COLOSSUS: {"max": 50, "priority": 10, "maker_class": UnitTypeId.ROBOTICSFACILITY,
+                                                 "supply": 6, "created": 0, "dead": 0,
+                                                 "mineral_cost": 300, "vespene_cost": 200},
                            UnitTypeId.IMMORTAL: {"max": 50, "priority": 5, "maker_class": UnitTypeId.ROBOTICSFACILITY,
-                                                 "supply": 6},
-                           UnitTypeId.CARRIER: {"max": 50, "priority": 0, "maker_class": UnitTypeId.STARGATE,  # 1
-                                                "supply": 6},
-                           UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS, "supply": 8},
-                           UnitTypeId.SENTRY: {"max": 50, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2},
+                                                 "supply": 6, "created": 0, "dead": 0, "mineral_cost": 275,
+                                                 "vespene_cost": 100},
+                           UnitTypeId.CARRIER: {"max": 50, "priority": 0, "maker_class": UnitTypeId.STARGATE,
+                                                "supply": 6, "created": 0, "dead": 0, "mineral_cost": 350,
+                                                "vespene_cost": 250},
+                           UnitTypeId.MOTHERSHIP: {"max": 1, "priority": 1, "maker_class": UnitTypeId.NEXUS,
+                                                   "supply": 8, "created": 0, "dead": 0, "mineral_cost": 400,
+                                                   "vespene_cost": 400},
+                           UnitTypeId.SENTRY: {"max": 50, "priority": 1, "maker_class": UnitTypeId.GATEWAY, "supply": 2,
+                                               "created": 0, "dead": 0, "mineral_cost": 50, "vespene_cost": 100},
                            UnitTypeId.TEMPEST: {"max": 50, "priority": 1, "maker_class": UnitTypeId.STARGATE,
-                                                "supply": 5}
+                                                "supply": 5, "created": 0, "dead": 0, "mineral_cost": 250,
+                                                "vespene_cost": 175}
                            }
 
     Q_CLASS = {UnitTypeId.ZEALOT: {"max": 50, "priority": 20, "maker_class": UnitTypeId.GATEWAY, "supply": 2}}
 
-    SCOUT_CLASS = {UnitTypeId.OBSERVER: {"max": 1, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY, "supply": 1}}
+    SCOUT_CLASS = {UnitTypeId.OBSERVER: {"max": 3, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY, "supply": 1}}
 
     MEDIC_CLASS = {}
 
@@ -124,7 +138,7 @@ if __name__ == '__main__':
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
         Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
                                                debug=True, take_training_data=True)),
-        Computer(Race.Zerg, Difficulty.Medium)
+        Computer(Race.Zerg, Difficulty.Hard)
     ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
