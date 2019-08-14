@@ -215,7 +215,7 @@ if __name__ == "__main__":
     dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=True, units_creator=False)
     model = Sc2Net(input_chanels=1, output_size=5)
     model_trainer = ModelTrainer(model=model, dataset=dataset)
-    model_trainer.train(100)
+    model_trainer.train(75)
     torch.save(model, "../Models/JarexProtoss_action_model.pth")
     model_trainer.plot_history()
 
