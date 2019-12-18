@@ -64,7 +64,8 @@ if __name__ == '__main__':
 
     # Notez que lors du premier run, deux erreurs l'un après l'autre interrompera le code.
     # Le premier vient de assert self.id != 0 à la ligne 93 de game_data, commentez le.
-    # Le deuxième vient de assert self.bits_per_pixel % 8 == 0, "Unsupported pixel density" à la ligne 9 de pixel_map, commentex le.
+    # Le deuxième vient de assert self.bits_per_pixel % 8 == 0, "Unsupported pixel density" à la ligne 9 de pixel_map,
+    # commentez le.
 
     run_game(maps.get("AbyssalReefLE"), [
         Bot(TutoBot.BOTRACE, TutoBot()),
