@@ -28,7 +28,7 @@ class ModelTrainer:
                  batch_size: int = 32,
                  saving_function=None,
                  early_stopping: bool = True,
-                 early_stopping_patience: int = 10,
+                 early_stopping_patience: int = 5,
                  saving_checkpoint: bool = False,
                  scheduler_step_size: int = 10,
                  scheduler_gamma: float = 0.1
@@ -206,29 +206,42 @@ class ModelTrainer:
             plt.savefig("figures/training_history.png", dpi=300)
         plt.show()
 
+    def save_model(self, filename: str, difficulty=None):
+        from sc2 import Difficulty
+        difficulties_map = {Difficulty.Easy: "Easy",
+                            Difficulty.Medium: "Medium",
+                            Difficulty.Hard: "Hard",
+                            Difficulty.Harder: "Harder"}
+        if difficulty in difficulties_map:
+            filename = filename.replace(".pth", '')
+            filename += '_' + difficulties_map[difficulty] + ".pth"
+        torch.save(self.model, filename)
+
 
 if __name__ == "__main__":
     from Deep.Sc2Dataset import Sc2Dataset
     from Deep.Models import Sc2Net, Sc2UnitMakerNet
+    from sc2 import Difficulty
 
     # Training of action maker model
-    dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=True, units_creator=False)
+    dataset = Sc2Dataset("JarexProtoss", 5, 14, action_maker=True, units_creator=False)
     model = Sc2Net(input_chanels=1, output_size=5)
     model_trainer = ModelTrainer(model=model, dataset=dataset)
-    model_trainer.train(75)
-    torch.save(model, "../Models/JarexProtoss_action_model.pth")
+    model_trainer.train(15)
+    # torch.save(model, "../Models/JarexProtoss_action_model.pth")
+    model_trainer.save_model(filename="../Models/JarexProtoss_action_model.pth", difficulty=Difficulty.Harder)
     model_trainer.plot_history()
 
     # Training of unit maker model
-    dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=False, units_creator=True)
+    # dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=False, units_creator=True)
     # model = Sc2Net(input_chanels=1, output_size=11)
     # model_trainer = ModelTrainer(model=model, dataset=dataset)
     # model_trainer.train(50)
     # torch.save(model, "../Models/JarexProtoss_unit_creator_model.pth")
     # model_trainer.plot_history()
 
-    model = Sc2UnitMakerNet("JarexProtoss")
-    model.train(dataset, max_epoch=100, verbose=False)
-    model.save()
-    model.plot_history()
+    # model = Sc2UnitMakerNet("JarexProtoss")
+    # model.train(dataset, max_epoch=100, verbose=False)
+    # model.save()
+    # model.plot_history()
 

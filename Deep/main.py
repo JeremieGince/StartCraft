@@ -11,21 +11,23 @@ from Deep.ModelTrainer import ModelTrainer
 import torch
 
 if __name__ == '__main__':
-    hm_win = 25
-    max_game = 100
+    hm_win = 30
+    max_game = 300
     hm_win_per_train = 10
     win_counter = 0
     last_win_update = 0
     game_counter = 0
-    difficulty = Difficulty.Hard
+    difficulty = Difficulty.Harder
+    gamma = 1/(hm_win/hm_win_per_train)
+    epsilon = 1.0
 
-    races = [Race.Terran, Race.Protoss]
+    races = [Race.Zerg, Race.Terran, Race.Protoss]
 
     while win_counter < hm_win:
 
         result = sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
             Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
-                                                   debug=True, take_training_data=True)),
+                                                   debug=False, take_training_data=True, epsilon=epsilon)),
             Computer(random.choice(races), difficulty)
         ], realtime=False)
 
@@ -33,14 +35,19 @@ if __name__ == '__main__':
             win_counter += 1
         game_counter += 1
 
+        print(f"-" * 175)
+        print(f"win_counter: {win_counter}, game_counter: {game_counter}")
+        print(f"-" * 175)
+
         if not win_counter % hm_win_per_train and win_counter and win_counter != last_win_update:
 
             # Training of action maker model
             dataset = Sc2Dataset("JarexProtoss", 5, 11, action_maker=True, units_creator=False)
             model = Sc2Net(input_chanels=1, output_size=5)
             model_trainer = ModelTrainer(model=model, dataset=dataset)
-            model_trainer.train(75)
-            torch.save(model, "../Models/JarexProtoss_action_model.pth")
+            model_trainer.train(15)
+            model_trainer.save_model(filename="../Models/JarexProtoss_action_model.pth", difficulty=difficulty)
+            # torch.save(model, "../Models/JarexProtoss_action_model.pth")
             # model_trainer.plot_history()
 
             # Training of unit maker model
@@ -51,12 +58,10 @@ if __name__ == '__main__':
             # model.plot_history()
 
             last_win_update = win_counter
+            epsilon *= gamma
 
         if game_counter == max_game:
             break
-        print(f"-" * 175)
-        print(f"win_counter: {win_counter}, game_counter: {game_counter}")
-        print(f"-" * 175)
 
     print(f"--- Training on {difficulty} Finished ---")
     print(f"win_counter: {win_counter}, game_counter: {game_counter}")

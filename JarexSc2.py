@@ -18,7 +18,7 @@ import os
 import time
 
 from getkeys import key_check
-from QUnit import QUnit
+from QUnit import QUnit, Unit
 from Deep.Models import Sc2UnitMakerNet
 import torch
 
@@ -44,7 +44,14 @@ class JarexSc2(sc2.BotAI):
 
     MILITARY_BUILDINGS_CLASS = dict()
 
+    DEFENSE_BUILDING_CLASS = dict()
+
+    RESERVE_BUILDING_CLASS = dict()
+
     Q_CLASS = dict()
+
+    DAMAGE_UNITS_ABILITIES = dict()
+    ATTACK_UNITS_ABILITIES = dict()
 
     army_units = list()
     attack_group = list()
@@ -58,7 +65,8 @@ class JarexSc2(sc2.BotAI):
     hm_scout_per_ennemy = 3
 
     RATIO_DEF_ATT_UNITS = 0.5
-    MIN_ARMY_SIZE_FOR_ATTACK = 50
+    MIN_ARMY_SIZE_FOR_ATTACK = 65
+    MIN_ARMY_SIZE_FOR_RETRETE = 15
 
     iteration = 0
     current_actions = []
@@ -68,10 +76,14 @@ class JarexSc2(sc2.BotAI):
              "attack": False}
 
     do_something_after = 0
+    do_something_after_scout = 0
+    iteration_per_scouting_point = 250
 
     MIN_EXPENSION = 2
 
-    def __init__(self, use_model, human_control=False, debug=False, take_training_data=True):
+    hm_iteration_per_efficacity_compute = 250
+
+    def __init__(self, use_model, human_control=False, debug=False, take_training_data=True, epsilon=0.05):
         super(JarexSc2, self).__init__()
         self.use_model = use_model
         self.human_control = human_control
@@ -97,7 +109,7 @@ class JarexSc2(sc2.BotAI):
 
         if self.use_model:
             try:
-                self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model.pth").cpu()
+                self.action_model = torch.load(f"Models/{self.BOTNAME}_action_model_Harder.pth").cpu()
             except FileNotFoundError:
                 self.action_model = torch.load(f"../Models/{self.BOTNAME}_action_model.pth").cpu()
 
@@ -106,11 +118,13 @@ class JarexSc2(sc2.BotAI):
         else:
             self.action_model = None
             self.unit_maker_model = None
+        self.epsilon = epsilon
 
         self.total_enemy_killed = 0
         self.last_iteration_enemy_killed = 0
         self.killed_score = 0
         self.last_killed_score = 0
+        self.is_attacking_ratio = 0.0
 
     def on_start(self):
         self.army_units = Units(list(), self._game_data)
@@ -167,11 +181,14 @@ class JarexSc2(sc2.BotAI):
                 print(f"defend_group: {self.defend_group}")
             else:
                 self.attack_group.append(unit)
-        elif unit.type_id in self.CIVIL_BUILDING_CLASS:
-            self.buildings.append(unit)
 
         if unit.type_id in self.MILITARY_UNIT_CLASS:
             self.MILITARY_UNIT_CLASS[unit.type_id]["created"] += 1
+            self.MILITARY_UNIT_CLASS[unit.type_id]["created_batch"] += 1
+
+    async def on_building_construction_complete(self, unit: Unit):
+        if unit.type_id in self.CIVIL_BUILDING_CLASS:
+            self.buildings.append(unit)
 
     async def on_unit_destroyed(self, unit_tag):
         groups = [self.army_units, self.attack_group, self.defend_group,
@@ -188,8 +205,9 @@ class JarexSc2(sc2.BotAI):
             # print(f"{unit} died and removed {unit not in group} from {group}")
             if unit.type_id in self.MILITARY_UNIT_CLASS:
                 self.MILITARY_UNIT_CLASS[unit.type_id]["dead"] += 1
+                self.MILITARY_UNIT_CLASS[unit.type_id]["dead_batch"] += 1
 
-    def scout_group_is_complete(self):
+    def scout_group_is_complete(self) -> bool:
         return self.scout_group.amount >= self.hm_scout_per_ennemy*len(self.enemy_start_locations)
 
     def q_group_is_complete(self):
@@ -199,18 +217,41 @@ class JarexSc2(sc2.BotAI):
         for unit in self.q_group:
             await unit.take_action()
 
+    def get_is_attacking_ratio(self, units: Units = None):
+        if units is None:
+            units = self.units.ready
+        is_attacking_count = 0
+        total = 0
+        for u in units:
+            try:
+                if isinstance(u.is_attacking, bool) and u.is_attacking:
+                    is_attacking_count += 1
+                total += 1
+            except Exception:
+                continue
+        if total:
+            is_attacking_ratio = is_attacking_count/total
+        else:
+            is_attacking_ratio = 0.0
+        return is_attacking_ratio
+
     async def on_step(self, iteration):
         self.iteration = iteration
 
+        if self.iteration == 1:
+            for t in self.townhalls:
+                if t not in self.buildings:
+                    self.buildings.append(t)
+
+        self.is_attacking_ratio = self.get_is_attacking_ratio()
+
         await self.expand()
 
-        self.buildings.clear()
-        b_groups = [self.units(c).ready for c in self.CIVIL_BUILDING_CLASS]
-        for g in b_groups:
-            for b in g:
-                self.buildings.append(b)
-        self.buildings = Units(self.buildings, self._game_data)
-        await self.scout()
+        try:
+            await self.scout()
+        except Exception:
+            pass
+
         await self.intel()
 
         self.get_enemy_dead_units()
@@ -235,10 +276,18 @@ class JarexSc2(sc2.BotAI):
             pass
 
         try:
-            await self.create_military_buildings()
+            if self.townhalls.amount >= self.MIN_EXPENSION:
+                await self.create_military_buildings()
+            else:
+                await self.build_reserve_buildings()
         except Exception:
             pass
 
+        try:
+            await self.build_defense_buildings()
+        except Exception:
+            pass
+        self.compute_units_efficacity()
         # await self.create_military_units_manually()
         await self.create_military_units()
         await self.take_action()
@@ -247,6 +296,9 @@ class JarexSc2(sc2.BotAI):
         # self.defend_until_die()
 
         self.redistribute_army()
+
+        await self.put_ability_on_damage_unit()
+        await self.put_ability_on_attacking_unit()
 
         await self.execute_actions()
 
@@ -267,14 +319,14 @@ class JarexSc2(sc2.BotAI):
                         self.current_actions.append(maker.train(worker_type))
 
     async def create_supply_depot(self):
-        cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
         supply_depot_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "supply")
-        cmdcs = self.units(cmdc_type)
         try:
-            if self.supply_cap < self.MAX_SUPPLY:
+            if self.supply_cap < self.MAX_SUPPLY \
+                    and (not self.units(supply_depot_type).amount or self.expend_count > 1):
                 if self.supply_left < self.MAX_SUPPLY_LEFT and self.can_afford(supply_depot_type) \
-                        and cmdcs.amount and not self.already_pending(supply_depot_type):
-                    await self.build(supply_depot_type, near=self.random_location_variance(cmdcs.random.position, 10),
+                        and self.townhalls.amount and not self.already_pending(supply_depot_type):
+                    await self.build(supply_depot_type,
+                                     near=self.random_location_variance(self.townhalls.random.position, 10),
                                      max_distance=10)
         except ValueError:
             pass
@@ -294,38 +346,85 @@ class JarexSc2(sc2.BotAI):
 
     async def create_military_buildings(self):
         try:
-            cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
-            cmdcs = self.units(cmdc_type)
-            if not cmdcs.amount:
+            if not self.townhalls.amount and not self.workers.amount:
                 return None
 
             for b_class, info in self.MILITARY_BUILDINGS_CLASS.items():
+                pos = self.townhalls.random.position
+                worker = self.workers.random
+                abilities = await self.get_available_abilities(worker)
                 if not self.iteration % info["priority"]:
                     builds = self.units(b_class).ready
-                    if cmdcs.amount * info["avg_per_cmdc"] > builds.amount \
-                            < info["max"] and self.can_afford(b_class) and not self.already_pending(b_class):
-                        await self.build(b_class,
-                                         near=self.random_location_variance(cmdcs.random.position, variance=10),
-                                         max_distance=75, placement_step=(20 if info["add_on"] else 10))
-                    for b in builds.noqueue:
-                        if b.add_on_tag == 0 and info["add_on"]:
-                            add_on_choice = random.choice(info["add_on"])
-                            if not self.already_pending(add_on_choice):
-                                try:
-                                    await self.do(b.build(add_on_choice))
-                                except Exception as e:
-                                    print("add_on err", e)
-                    for upgrade in info["upgrade"]:
-                        if self.can_afford(upgrade) and builds.noqueue:
-                            build = builds.noqueue.random
-                            if build:
-                                print(build, upgrade)
-                                try:
-                                    await self.do(build.research(upgrade))
-                                    await asyncio.sleep(1e-6)
-                                    info["upgrade"].remove(upgrade)
-                                except Exception:
-                                    pass
+                    if self.townhalls.amount * info["avg_per_cmdc"] > builds.amount < info["max"] \
+                            and self.can_afford(b_class) and not self.already_pending(b_class) \
+                            and info["ability_id"] in abilities:
+                        try:
+                            await self.build(b_class,
+                                             near=self.random_location_variance(pos, variance=10),
+                                             max_distance=75, placement_step=(20 if info["add_on"] else 10))
+                        except Exception:
+                            pass
+
+                    if self.townhalls.amount >= self.MIN_EXPENSION + 1:
+                        for upgrade in info["upgrade"]:
+                            if self.can_afford(upgrade) and builds.noqueue:
+                                build = builds.noqueue.random
+                                if build:
+                                    print(build, upgrade)
+                                    try:
+                                        await self.do(build.research(upgrade))
+                                        await asyncio.sleep(1e-6)
+                                        info["upgrade"].remove(upgrade)
+                                    except Exception:
+                                        pass
+        except Exception:
+            pass
+
+    async def build_defense_buildings(self):
+        try:
+            if not self.townhalls.amount and not self.workers.amount:
+                return None
+
+            for b_class, info in self.DEFENSE_BUILDING_CLASS.items():
+                pos = self.buildings.closest_to(random.choice(self.enemy_start_locations)).position
+                worker = self.workers.random
+                abilities = await self.get_available_abilities(worker)
+                if not self.iteration % info["priority"]:
+                    builds = self.units(b_class)
+                    if self.townhalls.amount * info["avg_per_cmdc"] > builds.amount < info["max"] \
+                        and self.can_afford(b_class) and not self.already_pending(b_class) \
+                            and info["ability_id"] in abilities:
+                        try:
+                            await self.build(b_class,
+                                             near=self.random_location_variance(pos, variance=10),
+                                             max_distance=30, placement_step=(10 if info["add_on"] else 5))
+                        except Exception:
+                            continue
+
+        except Exception:
+            pass
+
+    async def build_reserve_buildings(self):
+        try:
+            if not self.townhalls.amount and not self.workers.amount:
+                return None
+
+            for b_class, info in self.RESERVE_BUILDING_CLASS.items():
+                pos = self.townhalls.closest_to(self.start_location).position
+                worker = self.workers.random
+                abilities = await self.get_available_abilities(worker)
+                if not self.iteration % info["priority"]:
+                    builds = self.units(b_class)
+                    if self.townhalls.amount * info["avg_per_cmdc"] > builds.amount < info["max"] \
+                        and self.can_afford(b_class) and not self.already_pending(b_class) \
+                            and info["ability_id"] in abilities:
+                        try:
+                            await self.build(b_class,
+                                             near=self.random_location_variance(pos, variance=10),
+                                             max_distance=30, placement_step=(10 if info["add_on"] else 5))
+                        except Exception:
+                            continue
+
         except Exception:
             pass
 
@@ -335,41 +434,53 @@ class JarexSc2(sc2.BotAI):
                 await self.create_unit(unit_class, info)
 
     async def create_unit(self, unit_class, info=None, n=1):
+        check = False
+
         if info is None:
             info = self.MILITARY_UNIT_CLASS[unit_class]
+
         units = self.units(unit_class)
         makers = self.units(info["maker_class"]).ready
         if units.amount < info["max"] and self.supply_left >= info["supply"] and makers.amount > 0:
             for _ in range(n):
                 makers = makers.noqueue
                 if self.can_afford(unit_class) and makers.amount > 0:
-                    self.current_actions.append(makers.random.train(unit_class))
-            check = True
-        else:
-            check = False
+                    maker = makers.random
+                    abilities = await self.get_available_abilities(maker)
+                    try:
+                        if info["ability_id"] in abilities:
+                            self.current_actions.append(maker.train(unit_class))
+                            check = True
+                    except Exception:
+                        continue
         return check
 
     async def build_scout(self):
-        cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
-        cmdcs = self.units(cmdc_type)
-        if not cmdcs.amount:
+
+        if not self.townhalls.amount:
             return None
 
-        nb_to_build = len(self.enemy_start_locations) - self.scout_group.amount
-        for _ in range(nb_to_build):
-            random_scout_class = random.choice(list(self.SCOUT_CLASS.keys()))
-            random_scout_info = self.SCOUT_CLASS[random_scout_class]
-            makers = self.units(random_scout_info["maker_class"])
-            if not makers and self.can_afford(random_scout_info["maker_class"]) \
-                and not self.already_pending(random_scout_info["maker_class"]):
-                await self.build(random_scout_info["maker_class"], near=cmdcs.random)
-                return None
-            elif not makers:
-                return None
-            makers = makers.ready.noqueue
-            if makers and self.can_afford(random_scout_class) and not self.already_pending(random_scout_class) \
-                    and self.supply_left >= random_scout_info["supply"]:
-                self.current_actions.append(makers.random.train(random_scout_class))
+        nb_to_build = self.hm_scout_per_ennemy*len(self.enemy_start_locations) - self.scout_group.amount
+        if self.supply_used < self.MAX_SUPPLY:
+            for _ in range(nb_to_build):
+                random_scout_class = random.choice(list(self.SCOUT_CLASS.keys()))
+                random_scout_info = self.SCOUT_CLASS[random_scout_class]
+                makers = self.units(random_scout_info["maker_class"])
+                if not makers and self.can_afford(random_scout_info["maker_class"]) \
+                    and not self.already_pending(random_scout_info["maker_class"]):
+                    await self.build(random_scout_info["maker_class"], near=self.townhalls.random.position)
+                    return None
+                elif not makers:
+                    return None
+                makers = makers.ready.noqueue
+                if makers and self.can_afford(random_scout_class) and not self.already_pending(random_scout_class) \
+                        and self.supply_left >= random_scout_info["supply"]:
+                    self.current_actions.append(makers.random.train(random_scout_class))
+        elif nb_to_build and self.attack_group.amount:
+            redistributed_group = self.attack_group.random_group_of(nb_to_build)
+            for unit in redistributed_group:
+                self.attack_group.remove(unit)
+                self.scout_group.append(unit)
 
     async def expand(self):
         cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
@@ -389,16 +500,19 @@ class JarexSc2(sc2.BotAI):
             return None
 
     def redistribute_army(self):
-        if len(self.army_units) \
-                and len(self.defend_group) > self.RATIO_DEF_ATT_UNITS * len(self.army_units) \
-                and ((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units)) / 2 > len(self.attack_group):
-            n = int((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units))
-            if n > 0:
-                redistributed_group = self.defend_group.random_group_of(n)
+        try:
+            if len(self.army_units) \
+                    and len(self.defend_group) > self.RATIO_DEF_ATT_UNITS * len(self.army_units) \
+                    and ((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units)) / 2 > len(self.attack_group):
+                n = int((1 - self.RATIO_DEF_ATT_UNITS) * len(self.army_units))
+                if n > 0:
+                    redistributed_group = self.defend_group.random_group_of(n)
 
-                for unit in redistributed_group:
-                    self.defend_group.remove(unit)
-                    self.attack_group.append(unit)
+                    for unit in redistributed_group:
+                        self.defend_group.remove(unit)
+                        self.attack_group.append(unit)
+        except Exception:
+            pass
 
     def defend(self, units):
         if len(self.known_enemy_units):
@@ -407,15 +521,20 @@ class JarexSc2(sc2.BotAI):
                 dist = furthest_building.distance_to(self.start_location)
                 closest_enemies = self.known_enemy_units.closer_than(dist, unit)
                 if closest_enemies:
-                    self.current_actions.append(unit.attack(closest_enemies.closest_to(unit)))
+                    # self.current_actions.append(unit.attack(closest_enemies.closest_to(unit)))
+                    self.current_actions.append(unit.attack(closest_enemies.center))
                 else:
-                    self.current_actions.append(unit.move(furthest_building))
+                    # self.current_actions.append(unit.move(furthest_building))
+                    self.current_actions.append(unit.attack(furthest_building.position))
 
         elif len(self.buildings):
+            furthest_building = self.buildings.furthest_to(self.start_location)
             for unit in units.idle:
                 # random.shuffle(list(buildings))
                 # self.current_actions.extend([unit.move(b.position) for b in buildings])
-                self.current_actions.append(unit.move(random.choice(self.buildings).position))
+                # self.current_actions.append(unit.move(random.choice(self.buildings).position))
+                # self.current_actions.append(unit.move(furthest_building))
+                self.current_actions.append(unit.attack(furthest_building.position))
 
     def defend_until_die(self):
         cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
@@ -439,12 +558,13 @@ class JarexSc2(sc2.BotAI):
     async def attack_know_enemy_units(self):
         if len(self.known_enemy_units):
             for unit in self.attack_group.idle:
-                self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit)))
+                # self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit)))
+                self.current_actions.append(unit.attack(self.known_enemy_units.center))
 
     async def attack_known_enemy_structures(self):
         if len(self.known_enemy_structures):
             for unit in self.attack_group.idle:
-                self.current_actions.append(unit.attack(self.known_enemy_structures.closest_to(unit)))
+                self.current_actions.append(unit.attack(self.known_enemy_structures.closest_to(unit).position))
 
     async def attack_enemy_start_location(self):
         if self.enemy_start_locations:
@@ -458,7 +578,7 @@ class JarexSc2(sc2.BotAI):
 
     async def take_action(self):
         if self.iteration > self.do_something_after:
-            if self.use_model:
+            if self.use_model and random.random() > self.epsilon:
                 input_tensor = torch.FloatTensor(self.intel_out[np.newaxis, :, :]).unsqueeze(0).cpu()
                 # if torch.cuda.is_available():
                 #     input_tensor.cuda()
@@ -475,10 +595,19 @@ class JarexSc2(sc2.BotAI):
                     choice = choice[0]
                     print(f"You take {choice}")
             else:
+                if self.attack_group.amount < self.MIN_ARMY_SIZE_FOR_RETRETE \
+                        or self.get_is_attacking_ratio(self.buildings) \
+                        or (self.current_action_choice == 0 and self.is_attacking_ratio) \
+                        or self.get_is_attacking_ratio(self.defend_group):
+                    defend_weight = 25
+                elif self.attack_group.amount < self.MIN_ARMY_SIZE_FOR_ATTACK:
+                    defend_weight = 5
+                else:
+                    defend_weight = 1
 
-                defend_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 10
-                attack_units_weight = 10 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 5
-                attack_struct_weight = 4 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
+                # defend_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 10
+                attack_units_weight = 10 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 2
+                attack_struct_weight = 5 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
                 attack_estl_weight = 4 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 0
                 do_nothing_weight = 1 if self.attack_group.amount >= self.MIN_ARMY_SIZE_FOR_ATTACK else 1
 
@@ -492,6 +621,8 @@ class JarexSc2(sc2.BotAI):
                     for _ in range(weights[i]):
                         weighted_choices.append(c)
                 choice = random.choice(weighted_choices)
+                if self.use_model and self.debug:
+                    print("random choice")
 
             self.current_action_choice = choice
             wait = random.randrange(25, 85)
@@ -499,7 +630,7 @@ class JarexSc2(sc2.BotAI):
 
             y = np.zeros(len(self.attack_group_choices))
             y[choice] = 1
-            # print(f"action choice: {y}") if self.debug else 0
+            print(f"action choice: {self.attack_group_choices[choice]}") if self.debug else 0
             self.training_data["actions_choice_data"].append([self.intel_out, y])
         try:
             await self.attack_group_choices[self.current_action_choice]()
@@ -526,7 +657,19 @@ class JarexSc2(sc2.BotAI):
                 print(f"You take {choice}")
         else:
             # weights = [int(i["priority"] * ((i["created"]+1)/(i["dead"]+1))) for _, i in self.MILITARY_UNIT_CLASS.items()]
-            weights = [i["priority"] for _, i in self.MILITARY_UNIT_CLASS.items()]
+            # weights = [i["priority"] for _, i in self.MILITARY_UNIT_CLASS.items()]
+            weights = list()
+            for c, i in self.MILITARY_UNIT_CLASS.items():
+                if self.units(c).amount < i["max"] and self.can_afford(c):
+                    # i["priority"] = 100
+                    if i["type"] == "combat":
+                        weights.append(int(round(i["priority"]*i["efficacity"])))
+                    else:
+                        weights.append(i["priority"])
+                else:
+                    weights.append(0)
+                # print(f"{c} weight: {weights[-1]}") if not self.iteration % 250 else 0
+
             choices = list(self.MILITARY_UNIT_CLASS.keys())
             # weighted_choices = sum([weights[i] * [choices[i]] for i in range(len(choices))])
             assert len(weights) == len(choices)
@@ -534,7 +677,15 @@ class JarexSc2(sc2.BotAI):
             for i, c in enumerate(choices):
                 for _ in range(weights[i]):
                     weighted_choices.append(c)
-            weighted_choices.extend([None]*(50 if self.expend_count < self.MIN_EXPENSION else 1))
+
+            none_weight = 50
+            townhall_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
+            if not self.can_afford(townhall_type):
+                none_weight += 50
+            if self.townhalls.amount < self.MIN_EXPENSION:
+                none_weight = 100
+
+            weighted_choices.extend([None]*none_weight)
             class_choice = random.choice(weighted_choices)
             # print(class_choice)
 
@@ -552,7 +703,7 @@ class JarexSc2(sc2.BotAI):
 
     def get_units_state(self):
         state = [self.minerals, self.vespene, self.supply_left, self.expend_count,
-                 self.killed_score, self.last_killed_score]
+                 self.killed_score, self.last_killed_score, self.is_attacking_ratio]
         for unit_class, info in self.MILITARY_UNIT_CLASS.items():
             class_state = [info["supply"], info["created"], info["dead"], info["mineral_cost"], info["vespene_cost"]]
             state.extend(class_state)
@@ -592,16 +743,21 @@ class JarexSc2(sc2.BotAI):
         return go_to
 
     async def scout(self):
-        '''
-        ['__call__', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', '_game_data', '_proto', '_type_data', 'add_on_tag', 'alliance', 'assigned_harvesters', 'attack', 'build', 'build_progress', 'cloak', 'detect_range', 'distance_to', 'energy', 'facing', 'gather', 'has_add_on', 'has_buff', 'health', 'health_max', 'hold_position', 'ideal_harvesters', 'is_blip', 'is_burrowed', 'is_enemy', 'is_flying', 'is_idle', 'is_mine', 'is_mineral_field', 'is_powered', 'is_ready', 'is_selected', 'is_snapshot', 'is_structure', 'is_vespene_geyser', 'is_visible', 'mineral_contents', 'move', 'name', 'noqueue', 'orders', 'owner_id', 'position', 'radar_range', 'radius', 'return_resource', 'shield', 'shield_max', 'stop', 'tag', 'train', 'type_id', 'vespene_contents', 'warp_in']
-        '''
 
-        if self.scout_group.amount > 0:
-            self.create_scout_points()
-            for i, scout in enumerate(self.scout_group):
-                if scout.is_idle:
-                    move_to = self.random_location_variance(self.scout_points[i], variance=75)
-                    self.current_actions.append(scout.move(move_to))
+        if self.scout_group.amount > 0 and self.iteration > self.do_something_after_scout:
+            # self.create_scout_points()
+            # for i, scout in enumerate(self.scout_group):
+            #     if scout.is_idle and not scout.is_moving:
+            #         move_to = self.random_location_variance(self.scout_points[i], variance=75)
+            #         await self.do(scout.move(move_to))
+            for i, scout in enumerate(self.scout_group.idle):
+                if scout.is_idle and not scout.is_moving:
+
+                    move_to = self.random_location_variance(self.get_scouting_point(), variance=75)
+                    await self.do(scout.move(move_to))
+                    # print("oh shite I'm moving")
+
+            self.do_something_after_scout = self.iteration + self.iteration_per_scouting_point
 
         if not self.scout_group_is_complete():
             await self.build_scout()
@@ -617,6 +773,14 @@ class JarexSc2(sc2.BotAI):
 
             ordered_exp_distances = sorted(list(expand_dis_dir.keys()))
             self.scout_points.extend([expand_dis_dir[dist] for dist in ordered_exp_distances])
+
+    def get_scouting_point(self):
+        scouting_points = list(set(self.expansion_locations.keys()) - set(self.owned_expansions.keys()))
+
+        if not scouting_points:
+            scouting_points = self.enemy_start_locations + [self.start_location]
+        pos = random.choice(scouting_points)
+        return pos
 
     async def intel3Channels(self):
         raise NotImplementedError("Intel")
@@ -738,6 +902,11 @@ class JarexSc2(sc2.BotAI):
 
         try:
             line_max = 50
+
+            army_size_ratio = self.attack_group.amount / self.MAX_SUPPLY
+            if army_size_ratio > 1.0:
+                army_size_ratio = 1.0
+
             mineral_ratio = self.minerals / 1500
             if mineral_ratio > 1.0:
                 mineral_ratio = 1.0
@@ -757,6 +926,7 @@ class JarexSc2(sc2.BotAI):
             if worker_weight > 1.0:
                 worker_weight = 1.0
 
+            cv2.line(game_data, (0, 23), (int(line_max * army_size_ratio), 23), (200, 200, 200), 3)  # army_size/supplymax ratio
             cv2.line(game_data, (0, 19), (int(line_max*worker_weight), 19), (250, 250, 200), 3)  # worker/supply ratio
             cv2.line(game_data, (0, 15), (int(line_max*plausible_supply), 15), (220, 200, 200), 3)  # plausible supply (supply/200.0)
             cv2.line(game_data, (0, 11), (int(line_max*population_ratio), 11), (150, 150, 150), 3)  # population ratio (supply_left/supply)
@@ -849,6 +1019,54 @@ class JarexSc2(sc2.BotAI):
                         actions.append(w.gather(mf))
 
         await self.do_actions(actions)
+
+    def compute_units_efficacity(self):
+        threshold = 0.1
+        if not self.iteration % self.hm_iteration_per_efficacity_compute:
+            incompetences = list()
+            for unit_class, info in self.MILITARY_UNIT_CLASS.items():
+                total_cost = info["supply"] + info["mineral_cost"] + info["vespene_cost"]
+                incompetence = info["dead_batch"] / (max(1, info["created_batch"]))
+                incompetences.append(incompetence)
+
+            for i, (unit_class, info) in enumerate(self.MILITARY_UNIT_CLASS.items()):
+                be_attacked = False
+                if info["attack_ratio"]/self.hm_iteration_per_efficacity_compute >= threshold:
+                    be_attacked = True
+                    incompetence = incompetences[i] / max(1, incompetences[i], max(incompetences))
+                    info["efficacity"] = np.mean([info["efficacity"], (1 - incompetence)])
+
+                info["dead_batch"] = 0
+                info["created_batch"] = 0
+                if self.debug:
+                    print(f"{unit_class} efficacity: {info['efficacity']}, be_attacked: {be_attacked}")
+        else:
+            for i, (unit_class, info) in enumerate(self.MILITARY_UNIT_CLASS.items()):
+                info["attack_ratio"] += self.get_is_attacking_ratio(self.units(unit_class).ready)
+
+    async def put_ability_on_damage_unit(self):
+        for unit_type, ability in self.DAMAGE_UNITS_ABILITIES.items():
+            try:
+                for unit in self.units(unit_type).ready:
+                    # if unit.is_attacking:
+                    abilities = await self.get_available_abilities(unit)
+                    if unit.shield_percentage < 1 and ability in abilities:
+                        await self.do(unit(ability))
+            except Exception:
+                pass
+
+    async def put_ability_on_attacking_unit(self):
+        for unit_type, ability in self.ATTACK_UNITS_ABILITIES.items():
+            try:
+                for unit in self.units(unit_type).ready:
+                    abilities = await self.get_available_abilities(unit)
+                    try:
+                        if unit.is_attacking and ability in abilities:
+                            await self.do(unit(ability))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
 
 if __name__ == '__main__':
