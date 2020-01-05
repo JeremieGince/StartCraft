@@ -19,6 +19,7 @@ import time
 
 from getkeys import key_check
 from QUnit import QUnit, Unit
+from QUnits import QUnits
 from Deep.Models import Sc2UnitMakerNet
 import torch
 
@@ -60,13 +61,15 @@ class JarexSc2(sc2.BotAI):
     medic_group = list()
     q_group = list()
     buildings = list()
+    main_building = list()
+    utility_building = list()
 
     scout_points = list()
     hm_scout_per_ennemy = 3
 
     RATIO_DEF_ATT_UNITS = 0.5
     MIN_ARMY_SIZE_FOR_ATTACK = 65
-    MIN_ARMY_SIZE_FOR_RETRETE = 15
+    MIN_ARMY_SIZE_FOR_RETRAITE = 15
 
     iteration = 0
     current_actions = []
@@ -77,9 +80,9 @@ class JarexSc2(sc2.BotAI):
 
     do_something_after = 0
     do_something_after_scout = 0
-    iteration_per_scouting_point = 250
+    iteration_per_scouting_point = 200
 
-    MIN_EXPENSION = 2
+    MIN_EXPENSION = 3
 
     hm_iteration_per_efficacity_compute = 250
 
@@ -99,6 +102,8 @@ class JarexSc2(sc2.BotAI):
                                      3: self.attack_enemy_start_location,
                                      4: self.do_nothing}
         self.current_action_choice = 4
+        self.iteration = 0
+
         if self.human_control:
             print(f"attack group choices {self.attack_group_choices}")
 
@@ -132,8 +137,11 @@ class JarexSc2(sc2.BotAI):
         self.defend_group = Units(list(), self._game_data)
         self.scout_group = Units(list(), self._game_data)
         self.medic_group = Units(list(), self._game_data)
-        self.q_group = Units(list(), self._game_data)
+        # self.q_group = Units(list(), self._game_data)
+        self.q_group = QUnits(self, list(), self._game_data)
         self.buildings = Units(list(), self._game_data)
+        self.main_building = Units(list(), self._game_data)
+        self.utility_building = Units(list(), self._game_data)
 
         # self.create_scout_points()
 
@@ -168,12 +176,14 @@ class JarexSc2(sc2.BotAI):
 
             np.save(f"training_data/{self.DIRECTORY_PATH_UNIT_MAKER}/{um_filename}",
                     {"data": self.training_data["create_units_data"]})
+        self.q_group.on_end(game_result)
 
     async def on_unit_created(self, unit):
         if unit.type_id in self.SCOUT_CLASS and not self.scout_group_is_complete():
             self.scout_group.append(unit)
         elif unit.type_id in self.Q_CLASS and not self.q_group_is_complete():
-            self.q_group.append(QUnit(unit, self.q_group, self))
+            # self.q_group.append(QUnit(unit, self.q_group, self))
+            self.q_group.append(unit)
         elif unit.type_id in self.MILITARY_UNIT_CLASS:
             self.army_units.append(unit)
             if random.random() <= self.RATIO_DEF_ATT_UNITS:
@@ -187,8 +197,11 @@ class JarexSc2(sc2.BotAI):
             self.MILITARY_UNIT_CLASS[unit.type_id]["created_batch"] += 1
 
     async def on_building_construction_complete(self, unit: Unit):
+        self.buildings.append(unit)
         if unit.type_id in self.CIVIL_BUILDING_CLASS:
-            self.buildings.append(unit)
+            self.main_building.append(unit)
+        else:
+            self.utility_building.append(unit)
 
     async def on_unit_destroyed(self, unit_tag):
         groups = [self.army_units, self.attack_group, self.defend_group,
@@ -211,11 +224,21 @@ class JarexSc2(sc2.BotAI):
         return self.scout_group.amount >= self.hm_scout_per_ennemy*len(self.enemy_start_locations)
 
     def q_group_is_complete(self):
-        return self.q_group.amount >= 0
+        return self.q_group.amount >= sum([a["max"] for a in self.Q_CLASS.values()])
 
     async def update_q_units(self):
-        for unit in self.q_group:
-            await unit.take_action()
+        # for unit in self.q_group:
+        #     await unit.take_action()
+        if self.q_group.exists and self.iteration > self.do_something_after:
+            try:
+                await self.q_group.take_action()
+            except AssertionError:
+                pass
+        elif self.q_group.exists:
+            try:
+                await self.q_group.current_task()
+            except Exception:
+                pass
 
     def get_is_attacking_ratio(self, units: Units = None):
         if units is None:
@@ -290,8 +313,9 @@ class JarexSc2(sc2.BotAI):
         self.compute_units_efficacity()
         # await self.create_military_units_manually()
         await self.create_military_units()
-        await self.take_action()
+
         await self.update_q_units()
+        await self.take_action()
 
         # self.defend_until_die()
 
@@ -496,7 +520,7 @@ class JarexSc2(sc2.BotAI):
             elif self.expend_count < self.MIN_EXPENSION and self.can_afford(cmdc_type) and not self.already_pending(cmdc_type):
                 await self.expand_now()
                 self.expend_count += 1
-        except ValueError:
+        except (ValueError, sc2.protocol.ProtocolError):
             return None
 
     def redistribute_army(self):
@@ -515,26 +539,44 @@ class JarexSc2(sc2.BotAI):
             pass
 
     def defend(self, units):
-        if len(self.known_enemy_units):
+        struct_in_danger = None
+
+        # check if a building or worker is attacked by an enemy
+        for struct in self.buildings+self.workers:
+            if struct.shield_percentage < 1:
+                struct_in_danger = struct
+                break
+
+        # defend the struct in danger
+        if struct_in_danger is not None:
+            print(f"WE ARE ATTACKED!!! GO DEFEND!!!")
+            for unit in units:
+                self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(struct_in_danger).position))
+
+        # attack closest enemies
+        elif len(self.known_enemy_units):
             for unit in units.idle:
                 furthest_building = self.buildings.furthest_to(self.start_location)
                 dist = furthest_building.distance_to(self.start_location)
+                # print(f"furthest_building: {furthest_building} at dist: {dist}")
                 closest_enemies = self.known_enemy_units.closer_than(dist, unit)
                 if closest_enemies:
-                    # self.current_actions.append(unit.attack(closest_enemies.closest_to(unit)))
-                    self.current_actions.append(unit.attack(closest_enemies.center))
+                    self.current_actions.append(unit.attack(closest_enemies.closest_to(unit).position))
+                    # self.current_actions.append(unit.attack(closest_enemies.center))
                 else:
                     # self.current_actions.append(unit.move(furthest_building))
                     self.current_actions.append(unit.attack(furthest_building.position))
-
+        # just defend a building
         elif len(self.buildings):
             furthest_building = self.buildings.furthest_to(self.start_location)
+            # print(f"furthest_building: {furthest_building} at dist: {furthest_building.distance_to(self.start_location)}")
             for unit in units.idle:
                 # random.shuffle(list(buildings))
                 # self.current_actions.extend([unit.move(b.position) for b in buildings])
                 # self.current_actions.append(unit.move(random.choice(self.buildings).position))
                 # self.current_actions.append(unit.move(furthest_building))
-                self.current_actions.append(unit.attack(furthest_building.position))
+                # self.current_actions.append(unit.attack(furthest_building.position))
+                self.current_actions.append(unit.attack(self.random_location_variance(furthest_building.position, 50)))
 
     def defend_until_die(self):
         cmdc_type = self.find_key_per_info(self.CIVIL_BUILDING_CLASS, "type", "main")
@@ -558,8 +600,8 @@ class JarexSc2(sc2.BotAI):
     async def attack_know_enemy_units(self):
         if len(self.known_enemy_units):
             for unit in self.attack_group.idle:
-                # self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit)))
-                self.current_actions.append(unit.attack(self.known_enemy_units.center))
+                self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(unit).position))
+                # self.current_actions.append(unit.attack(self.known_enemy_units.center))
 
     async def attack_known_enemy_structures(self):
         if len(self.known_enemy_structures):
@@ -584,7 +626,7 @@ class JarexSc2(sc2.BotAI):
                 #     input_tensor.cuda()
                 prediction = self.action_model(input_tensor).detach().numpy()
                 choice = np.argmax(prediction[0])
-                # print('prediction: ',choice)
+                print('prediction: ', self.attack_group_choices.get(int(choice)))
 
             elif self.human_control:
                 choice = key_check([str(c) for c in list(self.attack_group_choices.keys())])
@@ -595,7 +637,7 @@ class JarexSc2(sc2.BotAI):
                     choice = choice[0]
                     print(f"You take {choice}")
             else:
-                if self.attack_group.amount < self.MIN_ARMY_SIZE_FOR_RETRETE \
+                if self.attack_group.amount < self.MIN_ARMY_SIZE_FOR_RETRAITE \
                         or self.get_is_attacking_ratio(self.buildings) \
                         or (self.current_action_choice == 0 and self.is_attacking_ratio) \
                         or self.get_is_attacking_ratio(self.defend_group):
@@ -638,7 +680,7 @@ class JarexSc2(sc2.BotAI):
             print(str(e))
 
     async def create_military_units(self):
-        if self.use_model and False:
+        if self.use_model and False:  # TODO: remove "and False"
             prediction = self.unit_maker_model(self.get_units_state()[np.newaxis, :])[0]
             choice = int(np.argmax(prediction))
 
