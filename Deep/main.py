@@ -11,7 +11,7 @@ from Deep.ModelTrainer import ModelTrainer
 import torch
 
 if __name__ == '__main__':
-    hm_win = 30
+    hm_win = 10
     max_game = 300
     hm_win_per_train = 10
     win_counter = 0
@@ -19,16 +19,22 @@ if __name__ == '__main__':
     game_counter = 0
     difficulty = Difficulty.Harder
     gamma = 1/(hm_win/hm_win_per_train)
-    epsilon = 1.0
+    epsilon = 0.5
 
     races = [Race.Zerg, Race.Terran, Race.Protoss]
+    ennemie_is_stats_model = True
 
     while win_counter < hm_win:
 
         result = sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
             Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
                                                    debug=False, take_training_data=True, epsilon=epsilon)),
-            Computer(random.choice(races), difficulty)
+
+            Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=False, human_control=False,
+                                                   debug=False, take_training_data=True, epsilon=1.0))
+            if ennemie_is_stats_model
+            else Computer(random.choice(races), difficulty)
+
         ], realtime=False)
 
         if result == sc2.Result.Victory:
