@@ -104,7 +104,7 @@ class JarexProtoss(JarexSc2):
                            #                     "ability_id": AbilityId.MORPH_ARCHON},
                            }
 
-    Q_CLASS = {UnitTypeId.STALKER: {"max": 10, "priority": 100, "maker_class": UnitTypeId.WARPGATE, "supply": 2}}
+    Q_CLASS = {UnitTypeId.STALKER: {"max": 0, "priority": 100, "maker_class": UnitTypeId.WARPGATE, "supply": 2}}
 
     SCOUT_CLASS = {UnitTypeId.OBSERVER: {"max": 10, "priority": 1, "maker_class": UnitTypeId.ROBOTICSFACILITY,
                                          "supply": 1}}
@@ -181,8 +181,8 @@ class JarexProtoss(JarexSc2):
                                                             "ability_id": AbilityId.PROTOSSBUILD_TEMPLARARCHIVE}
                                 }
 
-    DEFENSE_BUILDING_CLASS = {UnitTypeId.PHOTONCANNON: {"priority": 1, "max": 10,
-                                                        "avg_per_cmdc": 1, "add_on": [],
+    DEFENSE_BUILDING_CLASS = {UnitTypeId.PHOTONCANNON: {"priority": 1, "max": 20,
+                                                        "avg_per_cmdc": 3, "add_on": [],
                                                         "upgrade": [],
                                                         "ability_id": AbilityId.PROTOSSBUILD_PHOTONCANNON}}
 
@@ -195,8 +195,8 @@ class JarexProtoss(JarexSc2):
                               UnitTypeId.VOIDRAY: AbilityId.EFFECT_VOIDRAYPRISMATICALIGNMENT}
 
     RATIO_DEF_ATT_UNITS = 0.0
-    MIN_ARMY_SIZE_FOR_ATTACK = 40
-    MIN_ARMY_SIZE_FOR_RETRETE = 15
+    MIN_ARMY_SIZE_FOR_ATTACK = 30
+    MIN_ARMY_SIZE_FOR_RETRAITE = 5
 
     def __init__(self, use_model=False, human_control=False, debug=False, take_training_data=True, epsilon=0.05):
         super(JarexProtoss, self).__init__(use_model, human_control, debug, take_training_data, epsilon)
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     from JarexTerran import JarexTerran
 
     sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-        Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
+        Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=False, human_control=False,
                                                debug=True, take_training_data=False, epsilon=1.0),
             name=JarexProtoss.BOTNAME),
         Computer(Race.Protoss, Difficulty.Hard)
@@ -431,15 +431,15 @@ if __name__ == '__main__':
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
     #     Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
     #                                            debug=False, take_training_data=False),
-    #         name=JarexProtoss.BOTNAME),
+    #         name=JarexProtoss.BOTNAME+"_deep_model"),
     #     Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=False, human_control=False,
     #                                            debug=False, take_training_data=False),
-    #         name=JarexProtoss.BOTNAME+"_no_model")
-    # ], realtime=True)
+    #         name=JarexProtoss.BOTNAME+"_stats_model")
+    # ], realtime=False)
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
     #     Human(Race.Protoss, name="Cortex"),
-    #     Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=True, human_control=False,
+    #     Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=False, human_control=False,
     #                                            debug=False, take_training_data=False, epsilon=1.0),
     #         name=JarexProtoss.BOTNAME)
     # ], realtime=True)
