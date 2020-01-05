@@ -30,9 +30,10 @@ class QUnit:
 
     def __init__(self, unit: Unit, q_group: Units, bot: BotAI):  # Il faut le changer en placeholder pour accelerer l'instanciation et facilité la remise des rewards
         self.unit = unit
-        self.tag = unit.tag
+        self.tag = None if unit is None else unit.tag
         self.q_group = q_group
         self.bot = bot
+        self.enable = False if unit is None else True
 
         print(f"--- __init__ call on QUnit {self.tag} ---")
 
@@ -78,6 +79,22 @@ class QUnit:
         self._update_epsilon()
         self._update_target_model()
         self.save_model()
+
+    def set_unit(self, unit: Unit):
+        print(f"--- set_unit call on QUnit {unit.tag} ---")
+        self.unit = unit
+        self.tag = unit.tag
+        self.done = False
+        self.enable = True
+
+    def unset_unit(self):
+        print(f"--- unset_unit call on QUnit {self.tag} ---")
+        self.enable = False
+        self.done = True
+        self.current_reward = self.reward_values["die"]
+        self.update_memory(self.current_state, self.current_action, self.current_reward, self.get_state(), self.done)
+        self._update_epsilon()
+        self._update_target_model()
 
     def get_state(self):
         pos_x = self.unit.position3d[0]
