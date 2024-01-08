@@ -1,3 +1,4 @@
+import joblib
 import numpy as np
 import torch
 import torch.nn as nn
@@ -50,7 +51,6 @@ class Sc2Net(nn.Module):
 
 from sklearn import svm
 from sklearn.neural_network import MLPClassifier
-from sklearn.externals import joblib
 from Deep.Sc2Dataset import Sc2Dataset
 
 

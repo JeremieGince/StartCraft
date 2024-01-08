@@ -91,10 +91,11 @@ class QUnits(Units):
         # self.save_model()
 
     def on_end(self, game_result):
-        import sc2
+        from sc2.data import Result
         print(f"--- on_end call on QUnits ---")
         self.done = True
-        if game_result == sc2.Result.Victory:
+
+        if game_result == Result.Victory:
             self.current_reward = self.reward_values["win"]
         else:
             self.current_reward = self.reward_values["lose"]

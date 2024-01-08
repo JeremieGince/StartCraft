@@ -1,30 +1,26 @@
-import random
-
-import sc2
-from sc2 import Race, Difficulty
-from sc2.ids.ability_id import AbilityId
-from sc2.constants import *
-from sc2.ids.unit_typeid import UnitTypeId
-from sc2.ids.upgrade_id import UpgradeId
-from sc2.player import Bot, Computer
-from sc2.helpers import ControlGroup
-from sc2.units import Units
-from sc2 import position
-import cv2
-import numpy as np
-import math
 import asyncio
+import math
 import os
+import random
 import time
 
-from getkeys import key_check
-from QUnit import QUnit, Unit
-from QUnits import QUnits
-from Deep.Models import Sc2UnitMakerNet
+import cv2
+import numpy as np
+import sc2
 import torch
+from sc2 import position
+from sc2.constants import *
+from sc2.data import Result
+from sc2.units import Units
+from sc2.bot_ai import BotAI
+
+from Deep.Models import Sc2UnitMakerNet
+from QUnit import Unit
+from QUnits import QUnits
+from getkeys import key_check
 
 
-class JarexSc2(sc2.BotAI):
+class JarexSc2(BotAI):
     BOTRACE = None
     BOTNAME = "JarexSc2"
 
@@ -96,11 +92,13 @@ class JarexSc2(sc2.BotAI):
 
         self.intel_out = None
 
-        self.attack_group_choices = {0: self.defend_attack_group,
-                                     1: self.attack_know_enemy_units,
-                                     2: self.attack_known_enemy_structures,
-                                     3: self.attack_enemy_start_location,
-                                     4: self.do_nothing}
+        self.attack_group_choices = {
+            0: self.defend_attack_group,
+            1: self.attack_know_enemy_units,
+            2: self.attack_known_enemy_structures,
+            3: self.attack_enemy_start_location,
+            4: self.do_nothing
+        }
         self.current_action_choice = 4
         self.iteration = 0
 
@@ -130,34 +128,47 @@ class JarexSc2(sc2.BotAI):
         self.killed_score = 0
         self.last_killed_score = 0
         self.is_attacking_ratio = 0.0
+        self.known_enemy_units = Units([], self)
+        self.known_enemy_structures = Units([], self)
 
-    def on_start(self):
-        self.army_units = Units(list(), self._game_data)
-        self.attack_group = Units(list(), self._game_data)
-        self.defend_group = Units(list(), self._game_data)
-        self.scout_group = Units(list(), self._game_data)
-        self.medic_group = Units(list(), self._game_data)
+    async def on_start(self):
+        # self.army_units = Units(list(), self.game_data)
+        # self.attack_group = Units(list(), self.game_data)
+        # self.defend_group = Units(list(), self.game_data)
+        # self.scout_group = Units(list(), self.game_data)
+        # self.medic_group = Units(list(), self.game_data)
+        # # self.q_group = Units(list(), self._game_data)
+        # self.q_group = QUnits(self, list(), self.game_data)
+        # self.buildings = Units(list(), self.game_data)
+        # self.main_building = Units(list(), self.game_data)
+        # self.utility_building = Units(list(), self.game_data)
+
+        self.army_units = Units(list(), self)
+        self.attack_group = Units(list(), self)
+        self.defend_group = Units(list(), self)
+        self.scout_group = Units(list(), self)
+        self.medic_group = Units(list(), self)
         # self.q_group = Units(list(), self._game_data)
-        self.q_group = QUnits(self, list(), self._game_data)
-        self.buildings = Units(list(), self._game_data)
-        self.main_building = Units(list(), self._game_data)
-        self.utility_building = Units(list(), self._game_data)
+        self.q_group = QUnits(self, list(), self)
+        self.buildings = Units(list(), self)
+        self.main_building = Units(list(), self)
+        self.utility_building = Units(list(), self)
 
         # self.create_scout_points()
 
-        print(f"we need {self.hm_scout_per_ennemy*len(self.enemy_start_locations)} Scout")
+        print(f"we need {self.hm_scout_per_ennemy * len(self.enemy_start_locations)} Scout")
         for unit_type, info in self.SCOUT_CLASS.items():
-            info["max"] = self.hm_scout_per_ennemy*len(self.enemy_start_locations)
+            info["max"] = self.hm_scout_per_ennemy * len(self.enemy_start_locations)
 
         self.intel_out = np.zeros((self.game_info.map_size[1], self.game_info.map_size[0], 1), np.uint8)
 
-    def on_end(self, game_result):
+    async def on_end(self, game_result):
         print("--- on_end called ---")
         print(f"game_result {game_result}")
         # print(f"train_data amount: {len(self.training_data['actions_choice_data'])}")
         # print(f"Ennemy killed: {self._game_info.killed_enemy}")
 
-        if game_result == sc2.Result.Victory and self.take_training_data:
+        if game_result == Result.Victory and self.take_training_data:
 
             # Action Maker saving Data
             ac_filename = f"trdata_{time.strftime('%Y%m%d%H%M%S')}_{len(self.training_data['actions_choice_data'])}.npy"
@@ -221,7 +232,7 @@ class JarexSc2(sc2.BotAI):
                 self.MILITARY_UNIT_CLASS[unit.type_id]["dead_batch"] += 1
 
     def scout_group_is_complete(self) -> bool:
-        return self.scout_group.amount >= self.hm_scout_per_ennemy*len(self.enemy_start_locations)
+        return self.scout_group.amount >= self.hm_scout_per_ennemy * len(self.enemy_start_locations)
 
     def q_group_is_complete(self):
         return self.q_group.amount >= sum([a["max"] for a in self.Q_CLASS.values()])
@@ -253,7 +264,7 @@ class JarexSc2(sc2.BotAI):
             except Exception:
                 continue
         if total:
-            is_attacking_ratio = is_attacking_count/total
+            is_attacking_ratio = is_attacking_count / total
         else:
             is_attacking_ratio = 0.0
         return is_attacking_ratio
@@ -416,7 +427,7 @@ class JarexSc2(sc2.BotAI):
                 if not self.iteration % info["priority"]:
                     builds = self.units(b_class)
                     if self.townhalls.amount * info["avg_per_cmdc"] > builds.amount < info["max"] \
-                        and self.can_afford(b_class) and not self.already_pending(b_class) \
+                            and self.can_afford(b_class) and not self.already_pending(b_class) \
                             and info["ability_id"] in abilities:
                         try:
                             await self.build(b_class,
@@ -440,7 +451,7 @@ class JarexSc2(sc2.BotAI):
                 if not self.iteration % info["priority"]:
                     builds = self.units(b_class)
                     if self.townhalls.amount * info["avg_per_cmdc"] > builds.amount < info["max"] \
-                        and self.can_afford(b_class) and not self.already_pending(b_class) \
+                            and self.can_afford(b_class) and not self.already_pending(b_class) \
                             and info["ability_id"] in abilities:
                         try:
                             await self.build(b_class,
@@ -484,14 +495,14 @@ class JarexSc2(sc2.BotAI):
         if not self.townhalls.amount:
             return None
 
-        nb_to_build = self.hm_scout_per_ennemy*len(self.enemy_start_locations) - self.scout_group.amount
+        nb_to_build = self.hm_scout_per_ennemy * len(self.enemy_start_locations) - self.scout_group.amount
         if self.supply_used < self.MAX_SUPPLY:
             for _ in range(nb_to_build):
                 random_scout_class = random.choice(list(self.SCOUT_CLASS.keys()))
                 random_scout_info = self.SCOUT_CLASS[random_scout_class]
                 makers = self.units(random_scout_info["maker_class"])
                 if not makers and self.can_afford(random_scout_info["maker_class"]) \
-                    and not self.already_pending(random_scout_info["maker_class"]):
+                        and not self.already_pending(random_scout_info["maker_class"]):
                     await self.build(random_scout_info["maker_class"], near=self.townhalls.random.position)
                     return None
                 elif not makers:
@@ -517,7 +528,8 @@ class JarexSc2(sc2.BotAI):
                     and not self.already_pending(cmdc_type):
                 # print(f"We lost {self.expend_count-self.units(cmdc_type).amount} cmdc")
                 await self.expand_now()
-            elif self.expend_count < self.MIN_EXPENSION and self.can_afford(cmdc_type) and not self.already_pending(cmdc_type):
+            elif self.expend_count < self.MIN_EXPENSION and self.can_afford(cmdc_type) and not self.already_pending(
+                    cmdc_type):
                 await self.expand_now()
                 self.expend_count += 1
         except (ValueError, sc2.protocol.ProtocolError):
@@ -542,14 +554,14 @@ class JarexSc2(sc2.BotAI):
         struct_in_danger = None
 
         # check if a building or worker is attacked by an enemy
-        for struct in self.buildings+self.workers:
+        for struct in self.buildings + self.workers:
             if struct.shield_percentage < 1:
                 struct_in_danger = struct
                 break
 
         # defend the struct in danger
         if struct_in_danger is not None:
-            print(f"WE ARE ATTACKED!!! GO DEFEND!!!")
+            # print(f"WE ARE ATTACKED!!! GO DEFEND!!!")
             for unit in units:
                 self.current_actions.append(unit.attack(self.known_enemy_units.closest_to(struct_in_danger).position))
 
@@ -680,7 +692,7 @@ class JarexSc2(sc2.BotAI):
             print(str(e))
 
     async def create_military_units(self):
-        if self.use_model and False:  # TODO: remove "and False"
+        if self.use_model:
             prediction = self.unit_maker_model(self.get_units_state()[np.newaxis, :])[0]
             choice = int(np.argmax(prediction))
 
@@ -705,7 +717,7 @@ class JarexSc2(sc2.BotAI):
                 if self.units(c).amount < i["max"] and self.can_afford(c):
                     # i["priority"] = 100
                     if i["type"] == "combat":
-                        weights.append(int(round(i["priority"]*i["efficacity"])))
+                        weights.append(int(round(i["priority"] * i["efficacity"])))
                     else:
                         weights.append(i["priority"])
                 else:
@@ -727,7 +739,7 @@ class JarexSc2(sc2.BotAI):
             if self.townhalls.amount < self.MIN_EXPENSION:
                 none_weight = 100
 
-            weighted_choices.extend([None]*none_weight)
+            weighted_choices.extend([None] * none_weight)
             class_choice = random.choice(weighted_choices)
             # print(class_choice)
 
@@ -738,7 +750,7 @@ class JarexSc2(sc2.BotAI):
             else:
                 choice = none_choice
 
-        y = np.zeros(len(self.MILITARY_UNIT_CLASS)+1)
+        y = np.zeros(len(self.MILITARY_UNIT_CLASS) + 1)
         y[choice] = 1
         # print(f"unit choice: {y}") if self.debug else 0
         self.training_data["create_units_data"].append([self.get_units_state(), y])
@@ -794,7 +806,6 @@ class JarexSc2(sc2.BotAI):
             #         await self.do(scout.move(move_to))
             for i, scout in enumerate(self.scout_group.idle):
                 if scout.is_idle and not scout.is_moving:
-
                     move_to = self.random_location_variance(self.get_scouting_point(), variance=75)
                     await self.do(scout.move(move_to))
                     # print("oh shite I'm moving")
@@ -934,13 +945,15 @@ class JarexSc2(sc2.BotAI):
 
         game_data = np.zeros((self.game_info.map_size[1], self.game_info.map_size[0], 3), np.uint8)
 
-        for unit in self.units().ready:
+        for unit in self.all_own_units:
             pos = unit.position
-            cv2.circle(game_data, (int(pos[0]), int(pos[1])), int(unit.radius), (255, 255, 255), math.ceil(int(unit.radius*0.5)))
+            cv2.circle(game_data, (int(pos[0]), int(pos[1])), int(unit.radius), (255, 255, 255),
+                       math.ceil(int(unit.radius * 0.5)))
 
         for unit in self.known_enemy_units:
             pos = unit.position
-            cv2.circle(game_data, (int(pos[0]), int(pos[1])), int(unit.radius), (125, 125, 125), math.ceil(int(unit.radius*0.5)))
+            cv2.circle(game_data, (int(pos[0]), int(pos[1])), int(unit.radius), (125, 125, 125),
+                       math.ceil(int(unit.radius * 0.5)))
 
         try:
             line_max = 50
@@ -964,16 +977,19 @@ class JarexSc2(sc2.BotAI):
             plausible_supply = self.supply_cap / self.MAX_SUPPLY
 
             worker_type = list(self.CIVIL_UNIT_CLASS.keys())[0]
-            worker_weight = self.units(worker_type).amount / (self.supply_cap-self.supply_left)
+            worker_weight = self.units(worker_type).amount / (self.supply_cap - self.supply_left)
             if worker_weight > 1.0:
                 worker_weight = 1.0
 
-            cv2.line(game_data, (0, 23), (int(line_max * army_size_ratio), 23), (200, 200, 200), 3)  # army_size/supplymax ratio
-            cv2.line(game_data, (0, 19), (int(line_max*worker_weight), 19), (250, 250, 200), 3)  # worker/supply ratio
-            cv2.line(game_data, (0, 15), (int(line_max*plausible_supply), 15), (220, 200, 200), 3)  # plausible supply (supply/200.0)
-            cv2.line(game_data, (0, 11), (int(line_max*population_ratio), 11), (150, 150, 150), 3)  # population ratio (supply_left/supply)
-            cv2.line(game_data, (0, 7), (int(line_max*vespene_ratio), 7), (210, 200, 0), 3)  # gas / 1500
-            cv2.line(game_data, (0, 3), (int(line_max*mineral_ratio), 3), (0, 255, 25), 3)  # minerals minerals/1500
+            cv2.line(game_data, (0, 23), (int(line_max * army_size_ratio), 23), (200, 200, 200),
+                     3)  # army_size/supplymax ratio
+            cv2.line(game_data, (0, 19), (int(line_max * worker_weight), 19), (250, 250, 200), 3)  # worker/supply ratio
+            cv2.line(game_data, (0, 15), (int(line_max * plausible_supply), 15), (220, 200, 200),
+                     3)  # plausible supply (supply/200.0)
+            cv2.line(game_data, (0, 11), (int(line_max * population_ratio), 11), (150, 150, 150),
+                     3)  # population ratio (supply_left/supply)
+            cv2.line(game_data, (0, 7), (int(line_max * vespene_ratio), 7), (210, 200, 0), 3)  # gas / 1500
+            cv2.line(game_data, (0, 3), (int(line_max * mineral_ratio), 3), (0, 255, 25), 3)  # minerals minerals/1500
         except Exception as e:
             # print(str(e))
             pass
@@ -996,7 +1012,7 @@ class JarexSc2(sc2.BotAI):
                 break
         return re_key
 
-    async def distribute_workers(self):
+    async def distribute_workers(self, resource_ratio: float = 2):
         """
         Distributes workers across all the bases taken.
         WARNING: This is quite slow when there are lots of workers or multiple bases.
@@ -1010,7 +1026,7 @@ class JarexSc2(sc2.BotAI):
         actions = []
 
         for idle_worker in self.workers.idle:
-            mf = self.state.mineral_field.closest_to(idle_worker)
+            mf = self.mineral_field.closest_to(idle_worker)
             actions.append(idle_worker.gather(mf))
 
         for location, townhall in owned_expansions.items():
@@ -1021,7 +1037,7 @@ class JarexSc2(sc2.BotAI):
             if actual > ideal:
                 worker_pool.extend(workers.random_group_of(min(excess, len(workers))))
                 continue
-        for g in self.geysers:
+        for g in self.vespene_geyser:
             workers = self.workers.closer_than(5, g)
             actual = g.assigned_harvesters
             ideal = g.ideal_harvesters
@@ -1030,7 +1046,7 @@ class JarexSc2(sc2.BotAI):
                 worker_pool.extend(workers.random_group_of(min(excess, len(workers))))
                 continue
 
-        for g in self.geysers:
+        for g in self.vespene_geyser:
             actual = g.assigned_harvesters
             ideal = g.ideal_harvesters
             deficit = ideal - actual
@@ -1052,7 +1068,7 @@ class JarexSc2(sc2.BotAI):
             for x in range(0, deficit):
                 if worker_pool:
                     w = worker_pool.pop()
-                    mf = self.state.mineral_field.closest_to(townhall)
+                    mf = self.mineral_field.closest_to(townhall)
                     if len(w.orders) == 1 and w.orders[0].ability.id is AbilityId.HARVEST_RETURN:
                         actions.append(w.move(townhall))
                         actions.append(w.return_resource(queue=True))
@@ -1060,7 +1076,7 @@ class JarexSc2(sc2.BotAI):
                     else:
                         actions.append(w.gather(mf))
 
-        await self.do_actions(actions)
+        _ = [self.do(action) for action in actions]
 
     def compute_units_efficacity(self):
         threshold = 0.1
@@ -1073,7 +1089,7 @@ class JarexSc2(sc2.BotAI):
 
             for i, (unit_class, info) in enumerate(self.MILITARY_UNIT_CLASS.items()):
                 be_attacked = False
-                if info["attack_ratio"]/self.hm_iteration_per_efficacity_compute >= threshold:
+                if info["attack_ratio"] / self.hm_iteration_per_efficacity_compute >= threshold:
                     be_attacked = True
                     incompetence = incompetences[i] / max(1, incompetences[i], max(incompetences))
                     info["efficacity"] = np.mean([info["efficacity"], (1 - incompetence)])
@@ -1110,10 +1126,25 @@ class JarexSc2(sc2.BotAI):
             except Exception:
                 pass
 
+    async def on_enemy_unit_entered_vision(self, unit: Unit):
+        if unit.is_structure:
+            self.known_enemy_structures.append(unit)
+        else:
+            self.known_enemy_units.append(unit)
+
+    async def on_enemy_unit_left_vision(self, unit_tag: int):
+        for i, unit in enumerate(self.known_enemy_units):
+            if unit.tag == unit_tag:
+                del self.known_enemy_units[i]
+                break
+        for i, unit in enumerate(self.known_enemy_structures):
+            if unit.tag == unit_tag:
+                del self.known_enemy_structures[i]
+                break
+
 
 if __name__ == '__main__':
-    from examples.terran.proxy_rax import ProxyRaxBot
-    from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
+    pass
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
     #     Bot(Race.Terran, JarexTerran()),

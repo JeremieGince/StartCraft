@@ -1,17 +1,13 @@
+from sc2 import maps
+from sc2.main import run_game
+
 from JarexTerran import JarexTerran
 
-import random
-
-import sc2
-from sc2 import Race, Difficulty
-from sc2.ids.ability_id import AbilityId
+from sc2.data import Race, Difficulty
 from sc2.constants import *
 from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.upgrade_id import UpgradeId
 from sc2.player import Bot, Computer
-from sc2.helpers import ControlGroup
-from sc2.units import Units
-import numpy as np
 from JarexSc2 import JarexSc2
 
 
@@ -54,49 +50,59 @@ class MarineOverflow(JarexTerran):
         # faire le scout group, faire un trucs que c'est moi qui fait les choix pendant la game ou random ou par models.
         # faire l'affichage de données, finir d'écouter les tuto pour avoir plus d'idées
 
-    def on_end(self, game_result):
-        JarexTerran.on_end(self, game_result)
+    async def on_end(self, game_result):
         # print("Ennemy killed: ", self._game_info.killed_enemy)
+        return JarexTerran.on_end(self, game_result)
 
     async def create_military_buildings(self):
         # await super(JarexTerran, self).create_military_buildings()
 
         await JarexSc2.create_military_buildings(self)
 
-        barracks = self.units(UnitTypeId.BARRACKS).ready.noqueue
+        barracks = self.units(UnitTypeId.BARRACKS).ready
         if barracks:
             barrack = barracks.random
             if barrack.add_on_tag == 0 and self.can_afford(UnitTypeId.BARRACKSTECHLAB) \
                     and not self.already_pending(UnitTypeId.BARRACKSTECHLAB) \
                     and not self.units(UnitTypeId.BARRACKSTECHLAB):
                 try:
-                    abilities = await self.get_available_abilities(barrack)
+                    abilities = await self.get_available_abilities([barrack])
                     if AbilityId.BUILD_TECHLAB_BARRACKS in abilities:
-                        await self.do(barrack(AbilityId.BUILD_TECHLAB_BARRACKS))
+                        self.do(barrack(AbilityId.BUILD_TECHLAB_BARRACKS))
                 except Exception:
                     return None
 
-        starports = self.units(UnitTypeId.STARPORT).ready.noqueue
+        starports = self.units(UnitTypeId.STARPORT).ready
         if starports:
             starport = starports.random
             if starport.add_on_tag == 0 and self.can_afford(UnitTypeId.STARPORTTECHLAB) \
                     and not self.already_pending(UnitTypeId.STARPORTTECHLAB) \
                     and not self.units(UnitTypeId.STARPORTTECHLAB):
                 try:
-                    abilities = await self.get_available_abilities(starport)
+                    abilities = await self.get_available_abilities([starport])
                     if AbilityId.BUILD_TECHLAB_STARPORT in abilities:
-                        await self.do(starport(AbilityId.BUILD_TECHLAB_STARPORT))
+                        self.do(starport(AbilityId.BUILD_TECHLAB_STARPORT))
                 except Exception:
                     return None
 
 
 if __name__ == '__main__':
-    from examples.terran.proxy_rax import ProxyRaxBot
-    from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
+    import os
 
-    sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-        Bot(MarineOverflow.BOTRACE, MarineOverflow(use_model=False, human_control=False, debug=True,
-                                                   take_training_data=False)),
+    os.environ["SC2PATH"] = open("SC2PATH.txt").read().rstrip("\n")
+    # from examples.terran.proxy_rax import ProxyRaxBot
+    # from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
+
+    run_game(maps.get("AbyssalReefLE"), [
+        Bot(
+            MarineOverflow.BOTRACE,
+            MarineOverflow(
+                use_model=False,
+                human_control=False,
+                debug=True,
+                take_training_data=False
+            )
+        ),
         Computer(Race.Zerg, Difficulty.Hard)
     ], realtime=False)
 

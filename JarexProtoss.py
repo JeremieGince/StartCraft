@@ -1,16 +1,12 @@
 import random
 
 import sc2
-from sc2 import Race, Difficulty
-from sc2.ids.ability_id import AbilityId
+from sc2.data import Race, Difficulty
 from sc2.constants import *
 from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.upgrade_id import UpgradeId
+from sc2.main import run_game
 from sc2.player import Bot, Computer, Human
-from sc2.helpers import ControlGroup
-from sc2.units import Units
-from sc2 import position
-import cv2
 import asyncio
 from JarexSc2 import JarexSc2
 
@@ -228,7 +224,7 @@ class JarexProtoss(JarexSc2):
         for b_class, info in self.MILITARY_BUILDINGS_CLASS.items():
             pos = supps.random.position
             worker = self.workers.random
-            abilities = await self.get_available_abilities(worker)
+            abilities = await self.get_available_abilities([worker])
 
             if not self.iteration % info["priority"]:
                 builds = self.units(b_class).ready
@@ -244,12 +240,12 @@ class JarexProtoss(JarexSc2):
 
                 if self.townhalls.amount >= self.MIN_EXPENSION + 1:
                     for upgrade in info["upgrade"]:
-                        if self.can_afford(upgrade) and builds.noqueue:
-                            build = builds.noqueue.random
+                        if self.can_afford(upgrade) and builds.amount > 0:
+                            build = builds.random
                             if build:
                                 print(build, upgrade)
                                 try:
-                                    await self.do(build.research(upgrade))
+                                    self.do(build.research(upgrade))
                                     await asyncio.sleep(1e-6)
                                     info["upgrade"].remove(upgrade)
                                 except Exception:
@@ -263,7 +259,7 @@ class JarexProtoss(JarexSc2):
             for b_class, info in self.DEFENSE_BUILDING_CLASS.items():
                 pos = self.units(UnitTypeId.PYLON).closest_to(random.choice(self.enemy_start_locations)).position
                 worker = self.workers.random
-                abilities = await self.get_available_abilities(worker)
+                abilities = await self.get_available_abilities([worker])
                 if not self.iteration % info["priority"]:
                     builds = self.units(b_class)
                     if self.townhalls.amount * info["avg_per_cmdc"] > builds.amount < info["max"] \
@@ -323,14 +319,14 @@ class JarexProtoss(JarexSc2):
         return check
 
     async def init_warp_gate(self):
-        cyberneticscore = self.units(UnitTypeId.CYBERNETICSCORE).ready.noqueue
+        cyberneticscore = self.units(UnitTypeId.CYBERNETICSCORE).ready
         if cyberneticscore.amount:
             cyberneticscore = cyberneticscore.random
         if cyberneticscore and self.can_afford(UpgradeId.WARPGATERESEARCH):
             try:
                 abilities = await self.get_available_abilities(cyberneticscore)
                 if AbilityId.RESEARCH_WARPGATE in abilities:
-                    await self.do(cyberneticscore(AbilityId.RESEARCH_WARPGATE))
+                    self.do(cyberneticscore(AbilityId.RESEARCH_WARPGATE))
 
                     info = self.MILITARY_BUILDINGS_CLASS[UnitTypeId.GATEWAY]
                     self.MILITARY_BUILDINGS_CLASS[UnitTypeId.WARPGATE] = info
@@ -361,7 +357,7 @@ class JarexProtoss(JarexSc2):
         check = False
 
         for warpgate in self.units(UnitTypeId.WARPGATE).ready:
-            abilities = await self.get_available_abilities(warpgate)
+            abilities = await self.get_available_abilities([warpgate])
             # all the units have the same cooldown anyway so let's just look at STALKER
             if AbilityId.WARPGATETRAIN_STALKER in abilities:
                 pos = proxy.position.to2.random_on_distance(4)
@@ -373,7 +369,7 @@ class JarexProtoss(JarexSc2):
                         placement = await self.find_placement(AbilityId.WARPGATETRAIN_STALKER, pos, placement_step=1)
                 if placement is None:
                     return check
-                await self.do(warpgate.warp_in(unit_class, placement))
+                self.do(warpgate.warp_in(unit_class, placement))
                 check = True
 
         return check
@@ -383,11 +379,11 @@ class JarexProtoss(JarexSc2):
         if twilight_councils:
             twilight_council = twilight_councils.random
             try:
-                abilities = await self.get_available_abilities(twilight_council)
+                abilities = await self.get_available_abilities([twilight_council])
                 if AbilityId.RESEARCH_ADEPTRESONATINGGLAIVES in abilities:
-                    await self.do(twilight_council(AbilityId.RESEARCH_ADEPTRESONATINGGLAIVES))
+                    self.do(twilight_council(AbilityId.RESEARCH_ADEPTRESONATINGGLAIVES))
                 elif AbilityId.RESEARCH_CHARGE in abilities:
-                    await self.do(twilight_council(AbilityId.RESEARCH_CHARGE))
+                    self.do(twilight_council(AbilityId.RESEARCH_CHARGE))
             except Exception:
                 pass
 
@@ -395,24 +391,33 @@ class JarexProtoss(JarexSc2):
         if robotics_bays:
             robotics_bay = robotics_bays.random
             try:
-                abilities = await self.get_available_abilities(robotics_bay)
+                abilities = await self.get_available_abilities([robotics_bay])
                 if AbilityId.RESEARCH_EXTENDEDTHERMALLANCE in abilities:
-                    await self.do(robotics_bay(AbilityId.RESEARCH_EXTENDEDTHERMALLANCE))
+                    self.do(robotics_bay(AbilityId.RESEARCH_EXTENDEDTHERMALLANCE))
             except Exception:
                 pass
 
 
 if __name__ == '__main__':
-    from examples.terran.proxy_rax import ProxyRaxBot
-    from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
-    from JarexTerran import JarexTerran
+    import os
 
-    sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
-        Bot(JarexProtoss.BOTRACE, JarexProtoss(use_model=False, human_control=False,
-                                               debug=True, take_training_data=False, epsilon=1.0),
-            name=JarexProtoss.BOTNAME),
-        Computer(Race.Protoss, Difficulty.Hard)
-    ], realtime=False)
+    os.environ["SC2PATH"] = open("SC2PATH.txt").read().rstrip("\n")
+    # from examples.terran.proxy_rax import ProxyRaxBot
+    # from Sentdex_tuto.t6_defeated_hard_AI import SentdeBot
+    # from JarexTerran import JarexTerran
+
+    run_game(
+        sc2.maps.get("AbyssalReefLE"),
+        [
+            Bot(
+                JarexProtoss.BOTRACE,
+                JarexProtoss(use_model=False, human_control=False, debug=True, take_training_data=False, epsilon=1.0),
+                name=JarexProtoss.BOTNAME
+            ),
+            Computer(Race.Protoss, Difficulty.Hard)
+        ],
+        realtime=False
+    )
 
     # sc2.run_game(sc2.maps.get("AbyssalReefLE"), [
     #     Bot(Race.Terran, JarexTerran()),
